@@ -1,0 +1,17 @@
+# Virtual environment
+.venv/
+
+# Test keys (never commit real keys!)
+test_keys/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# PyCharm settings
+.idea/
+
+# Key storage directories (production)
+keys/
+ca/ca_keys/
