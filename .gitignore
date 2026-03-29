@@ -1,5 +1,12 @@
 # Virtual environment
 .venv/
+venv/
+**/venv/
+env/
+**/env/
+.venv/
+**/.venv/
+
 
 # Test keys
 test_keys/
@@ -19,3 +26,4 @@ client/keys/
 
 # Logs
 logs/
+
