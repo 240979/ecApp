@@ -2,6 +2,18 @@
 
 A Python-based communication application with Elliptic curve cryptographic features.
 
+## Getting Started
+
+### Prerequisites
+Ensure you have Python installed and a **virtual environment** set up in the root directory (`ecApp/venv`).
+
+### Running the Application
+To start the main application, navigate to the project root folder (`ecApp`) and run the following command within your activated virtual environment:
+
+```bash
+python -m app.app
+```
+
 ## Setup & Installation
 
 Since the virtual environment (`venv`) is ignored by Git, you need to set it up locally after cloning the repository.
@@ -35,16 +47,4 @@ Linux
 ### 4. Exit the Virtual Environment
 ``` bash
     deactivate
-```
-
-## Getting Started
-
-### Prerequisites
-Ensure you have Python installed and a **virtual environment** set up in the root directory (`ecApp/venv`).
-
-### Running the Application
-To start the main application, navigate to the project root folder (`ecApp`) and run the following command within your activated virtual environment:
-
-```bash
-python -m app.app
 ```
