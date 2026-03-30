@@ -1,5 +1,0 @@
-Flask==3.0.0
-gunicorn==21.2.0
-gpiozero==2.0
-portalocker==2.8.2
-# Poznámka: fcntl je součástí standardní knihovny Linuxu, neinstaluje se přes pip.
