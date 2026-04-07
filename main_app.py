@@ -1,7 +1,7 @@
+import getpass
+import json  # Added for loading password hash
 import os
 import sys
-import getpass
-import json # Added for loading password hash
 
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -9,9 +9,9 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 from register import register as run_register_script
 from ca_sign import sign_csr, revoke_user, list_users
 from app.app import start_chat_app # We will refactor app.app.main into start_chat_app
-from config import USER_KEYS_DIR, CA_KEYS_DIR, DEFAULT_SYMMETRIC_ALGO, SUPPORTED_ALGORITHMS
+from config import USER_KEYS_DIR
 from crypto.keys import load_private_key, verify_password
-from crypto.certificates import load_certificate, verify_certificate, get_public_key_from_cert
+from crypto.certificates import load_certificate, verify_certificate
 from config import get_ca_public_key
 
 def handle_registration():
@@ -65,7 +65,7 @@ def handle_ca_admin():
         else:
             print("Invalid choice. Please try again.")
 
-def handle_login_and_chat():
+def handle_login_and_chat(debug_mode):
     """Handles user login and initiates the chat application."""
     print("\n--- User Login & Chat ---")
     username = input("Enter your username: ").strip()
@@ -125,11 +125,11 @@ def handle_login_and_chat():
         return
 
     # Now, proceed to chat setup
-    mode = input("Choose mode (s = server / c = client):").lower()
-    if mode not in ['s', 'c']:
-        print("Invalid mode. Please choose 's' for server or 'c' for client.")
-        return
-
+    # mode = input("Choose mode (s = server / c = client):").lower()
+    # if mode not in ['s', 'c']:
+    #     print("Invalid mode. Please choose 's' for server or 'c' for client.")
+    #     return
+    peer_ip = input("Enter peer IP (or press Enter to wait for connection): ").strip()
     crypto_choice = input("Enable encryption? (y/n): ").lower()
     be_encrypted = crypto_choice == 'y'
 
@@ -137,7 +137,8 @@ def handle_login_and_chat():
     start_chat_app(
         username=username,
         password=password, # Password needed for decrypting private keys for signing/decryption
-        mode=mode,
+        peer_ip=peer_ip,
+        debug_mode=debug_mode,
         be_encrypted=be_encrypted,
         user_ecdsa_priv=user_ecdsa_priv,
         user_eddsa_priv=user_eddsa_priv,
@@ -147,6 +148,14 @@ def handle_login_and_chat():
 
 
 def main():
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--debug-local", action="store_true")
+    parser.add_argument("--debug-remote", action="store_true")
+    args = parser.parse_args()
+
+    debug_mode = "local" if args.debug_local else "remote" if args.debug_remote else None
     """Main entry point for the ecApp."""
     while True:
         print("\n=== ecApp Main Menu ===")
@@ -159,7 +168,7 @@ def main():
         if choice == '1':
             handle_registration()
         elif choice == '2':
-            handle_login_and_chat()
+            handle_login_and_chat(debug_mode)
         elif choice == '3':
             handle_ca_admin()
         elif choice == '4':

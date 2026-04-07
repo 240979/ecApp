@@ -1,19 +1,18 @@
 # general-known imports
-import threading
+import json  # Added for json.dumps in signing ECIES bundle
 import socket
-import sys
+import threading
 
 # team imports
-from config import DEFAULT_PORT, ALGO_AES_GCM, ALGO_CHACHA20, ALGO_AES_CBC_HMAC, SUPPORTED_ALGORITHMS, DEFAULT_SYMMETRIC_ALGO, get_ca_public_key
-from protocols.protocol import (
-    send_message, receive_message, make_error, make_encrypted_message,
-    make_sign_only_message, make_hello, make_hello_ack, 
-    MSG_HELLO, MSG_HELLO_ACK, MSG_BYE, MSG_SIGN_ONLY, MSG_MESSAGE, make_bye
-)
+from config import SUPPORTED_ALGORITHMS, DEFAULT_SYMMETRIC_ALGO, get_ca_public_key
 from crypto.certificates import verify_certificate, get_public_key_from_cert
 from crypto.ecies import ecies_encrypt, ecies_decrypt
 from crypto.signing import eddsa_sign, eddsa_verify, signature_to_b64, signature_from_b64
-import json # Added for json.dumps in signing ECIES bundle
+from protocols.protocol import (
+    send_message, receive_message, make_error, make_encrypted_message,
+    make_sign_only_message, make_hello, make_hello_ack,
+    MSG_BYE, MSG_SIGN_ONLY, MSG_MESSAGE, make_bye
+)
 
 # Global variables to hold session-specific crypto objects
 # These will be set during the handshake
@@ -177,18 +176,22 @@ def run_chat(sock: socket.socket, is_encrypted: bool = False):
 
 # The 'server' socket is closed by the server branch.
 # The 'conn' socket is closed by run_chat.
-def start_chat_app( # This function was previously missing a 'finally' block for server.close()
-    username: str,
-    password: str,
-    mode: str,
-    be_encrypted: bool,
-    user_ecdsa_priv,
-    user_eddsa_priv,
-    user_ecdsa_certificate: dict,
-    user_eddsa_certificate: dict
+from network.peer import establish_connection
+
+
+def start_chat_app(
+        username: str,
+        password: str,
+        be_encrypted: bool,
+        user_ecdsa_priv,
+        user_eddsa_priv,
+        user_ecdsa_certificate: dict,
+        user_eddsa_certificate: dict,
+        peer_ip: str = None,  # Added for P2P routing
+        debug_mode: str = None  # Added for P2P local debugging
 ):
     """
-    Starts the chat application with pre-loaded user credentials.
+    Starts the chat application with pre-loaded user credentials over a P2P connection.
     """
     global user_ecdsa_priv_key, user_eddsa_priv_key, user_ecdsa_cert, user_eddsa_cert
     global peer_ecdsa_pub_key, peer_eddsa_pub_key, session_symmetric_algo
@@ -198,101 +201,88 @@ def start_chat_app( # This function was previously missing a 'finally' block for
     user_ecdsa_cert = user_ecdsa_certificate
     user_eddsa_cert = user_eddsa_certificate
 
-
-
     ca_public_key = get_ca_public_key()
 
-    conn = None
-    if mode == 's':
-        server: socket.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        server.bind(("0.0.0.0", DEFAULT_PORT))
-        server.listen(1)
-        print(f"Server listening on port {DEFAULT_PORT}...")
-        conn, _ = server.accept() # This blocks until a client connects
-        print(f"Connection established with client.")
+    print("Establishing P2P connection...")
+    try:
+        conn = establish_connection(peer_ip, debug_mode)
+    except Exception as e:
+        print(f"Failed to establish connection: {e}")
+        return
 
-        # Server receives HELLO from the client
-        hello = receive_message(conn) #
-        peer_ecdsa_hello_cert = hello['payload']['ecdsaCertificate'] #
-        peer_eddsa_hello_cert = hello['payload']['eddsaCertificate'] #
-        peer_supported_algs = hello['payload']['supportedAlgorithms']
+    try:
+        # --- HANDSHAKE PHASE ---
 
-        # Verify client's ECDSA certificate
-        if not verify_certificate(peer_ecdsa_hello_cert, ca_public_key): #
-            print("[Handshake Error] Client ECDSA certificate verification failed. Disconnecting.")
-            send_message(conn, make_error("Client ECDSA certificate invalid."))
-            conn.close()
-            return
-        # Verify client's EdDSA certificate
-        if not verify_certificate(peer_eddsa_hello_cert, ca_public_key): #
-            print("[Handshake Error] Client EdDSA certificate verification failed. Disconnecting.")
-            send_message(conn, make_error("Client EdDSA certificate invalid."))
-            conn.close()
-            return
-        
-        peer_ecdsa_pub_key = get_public_key_from_cert(peer_ecdsa_hello_cert) #
-        peer_eddsa_pub_key = get_public_key_from_cert(peer_eddsa_hello_cert) #
+        # If no IP was provided, we acted as the passive listener.
+        # We act as the handshake Responder (wait for HELLO, send ACK).
+        if not peer_ip:
+            hello = receive_message(conn)
+            peer_ecdsa_hello_cert = hello['payload']['ecdsaCertificate']
+            peer_eddsa_hello_cert = hello['payload']['eddsaCertificate']
+            peer_supported_algs = hello['payload']['supportedAlgorithms']
 
-        print(f"[Handshake] Client '{peer_ecdsa_hello_cert['subject']}' connected and proposes: {peer_supported_algs}") #
-        
-        # Server responds with ACK and confirms encryption
-        if be_encrypted and DEFAULT_SYMMETRIC_ALGO in peer_supported_algs:
-            session_symmetric_algo = DEFAULT_SYMMETRIC_ALGO
+            if not verify_certificate(peer_ecdsa_hello_cert, ca_public_key):
+                print("[Handshake Error] Peer ECDSA certificate verification failed. Disconnecting.")
+                send_message(conn, make_error("Peer ECDSA certificate invalid."))
+                return
+            if not verify_certificate(peer_eddsa_hello_cert, ca_public_key):
+                print("[Handshake Error] Peer EdDSA certificate verification failed. Disconnecting.")
+                send_message(conn, make_error("Peer EdDSA certificate invalid."))
+                return
+
+            peer_ecdsa_pub_key = get_public_key_from_cert(peer_ecdsa_hello_cert)
+            peer_eddsa_pub_key = get_public_key_from_cert(peer_eddsa_hello_cert)
+
+            print(
+                f"[Handshake] Peer '{peer_ecdsa_hello_cert['subject']}' connected and proposes: {peer_supported_algs}")
+
+            if be_encrypted and DEFAULT_SYMMETRIC_ALGO in peer_supported_algs:
+                session_symmetric_algo = DEFAULT_SYMMETRIC_ALGO
+            else:
+                session_symmetric_algo = "NONE"
+
+            ack = make_hello_ack(user_ecdsa_cert, user_eddsa_cert, session_symmetric_algo)
+            send_message(conn, ack)
+
+            run_chat(conn, session_symmetric_algo != "NONE")
+
+        # If an IP was provided, we actively connected.
+        # We act as the handshake Initiator (send HELLO, wait for ACK).
         else:
-            session_symmetric_algo = "NONE"
+            client_supported_algs = SUPPORTED_ALGORITHMS if be_encrypted else ["NONE"]
+            hello = make_hello(user_ecdsa_cert, user_eddsa_cert, client_supported_algs)
+            send_message(conn, hello)
 
-        ack = make_hello_ack(user_ecdsa_cert, user_eddsa_cert, session_symmetric_algo) #
-        send_message(conn, ack)
-        
-        try:
-            run_chat(conn, session_symmetric_algo != "NONE") # This will close 'conn'
-        finally:
-            server.close() # Ensure server socket is closed even if run_chat crashes
-    else:
-        ip: str = input("Enter server IP address: ")
-        conn: socket.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        conn.connect((ip, DEFAULT_PORT))
-        print(f"Connected to server at {ip}:{DEFAULT_PORT}")
+            ack = receive_message(conn)
+            peer_ecdsa_ack_cert = ack['payload']['ecdsaCertificate']
+            peer_eddsa_ack_cert = ack['payload']['eddsaCertificate']
+            chosen_algorithm = ack['payload']['chosenAlgorithm']
 
-        # Client sends HELLO
-        client_supported_algs = SUPPORTED_ALGORITHMS if be_encrypted else ["NONE"] #
-        hello = make_hello(user_ecdsa_cert, user_eddsa_cert, client_supported_algs) #
-        send_message(conn, hello)
+            if not verify_certificate(peer_ecdsa_ack_cert, ca_public_key):
+                print("[Handshake Error] Peer ECDSA certificate verification failed. Disconnecting.")
+                send_message(conn, make_error("Peer ECDSA certificate invalid."))
+                return
+            if not verify_certificate(peer_eddsa_ack_cert, ca_public_key):
+                print("[Handshake Error] Peer EdDSA certificate verification failed. Disconnecting.")
+                send_message(conn, make_error("Peer EdDSA certificate invalid."))
+                return
 
-        # Client waits for acknowledgment from the server
-        ack = receive_message(conn) #
-        peer_ecdsa_ack_cert = ack['payload']['ecdsaCertificate'] #
-        peer_eddsa_ack_cert = ack['payload']['eddsaCertificate'] #
-        chosen_algorithm = ack['payload']['chosenAlgorithm']
+            peer_ecdsa_pub_key = get_public_key_from_cert(peer_ecdsa_ack_cert)
+            peer_eddsa_pub_key = get_public_key_from_cert(peer_eddsa_ack_cert)
 
-        # Verify server's ECDSA certificate
-        if not verify_certificate(peer_ecdsa_ack_cert, ca_public_key): #
-            print("[Handshake Error] Server ECDSA certificate verification failed. Disconnecting.")
-            send_message(conn, make_error("Server ECDSA certificate invalid."))
+            print(
+                f"[Handshake] Peer '{peer_ecdsa_ack_cert['subject']}' acknowledged with algorithm: {chosen_algorithm}")
+
+            if chosen_algorithm != "NONE":
+                session_symmetric_algo = chosen_algorithm
+                final_enc = True
+            else:
+                session_symmetric_algo = "NONE"
+                final_enc = False
+
+            run_chat(conn, final_enc)
+
+    finally:
+        # Ensures the P2P connection socket is cleanly closed regardless of crashes or normal exits
+        if conn:
             conn.close()
-            return
-        # Verify server's EdDSA certificate
-        if not verify_certificate(peer_eddsa_ack_cert, ca_public_key): #
-            print("[Handshake Error] Server EdDSA certificate verification failed. Disconnecting.")
-            send_message(conn, make_error("Server EdDSA certificate invalid."))
-            conn.close()
-            return
-
-        peer_ecdsa_pub_key = get_public_key_from_cert(peer_ecdsa_ack_cert) #
-        peer_eddsa_pub_key = get_public_key_from_cert(peer_eddsa_ack_cert) #
-
-        print(f"[Handshake] Server '{peer_ecdsa_ack_cert['subject']}' acknowledged with algorithm: {chosen_algorithm}") #
-
-        if chosen_algorithm != "NONE":
-            session_symmetric_algo = chosen_algorithm
-            final_enc = True
-        else:
-            session_symmetric_algo = "NONE"
-            final_enc = False
-        
-        try:
-            run_chat(conn, final_enc) # This will close 'conn'
-        finally:
-            if conn: # Ensure client connection socket is closed even if run_chat crashes
-                conn.close()
