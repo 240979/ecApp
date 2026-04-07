@@ -63,30 +63,34 @@ def make_message(msg_type: str, payload: dict) -> dict:
     }
 
 
-def make_hello(certificate: dict, supported_algorithms: list) -> dict:
+def make_hello(ecdsa_certificate: dict, eddsa_certificate: dict, supported_algorithms: list) -> dict:
     """
-    Construct a HELLO message carrying the sender's certificate.
+    Construct a HELLO message carrying the sender's ECDSA and EdDSA certificates.
 
     Args:
-        certificate:           Sender's certificate dict.
+        ecdsa_certificate:     Sender's ECDSA certificate dict.
+        eddsa_certificate:     Sender's EdDSA certificate dict.
         supported_algorithms:  List of symmetric algorithms the sender supports.
     """
     return make_message(MSG_HELLO, {
-        "certificate":          certificate,
+        "ecdsaCertificate":     ecdsa_certificate,
+        "eddsaCertificate":     eddsa_certificate,
         "supportedAlgorithms":  supported_algorithms,
     })
 
 
-def make_hello_ack(certificate: dict, chosen_algorithm: str) -> dict:
+def make_hello_ack(ecdsa_certificate: dict, eddsa_certificate: dict, chosen_algorithm: str) -> dict:
     """
     Construct a HELLO_ACK message confirming the handshake.
 
     Args:
-        certificate:      Responder's certificate dict.
+        ecdsa_certificate: Responder's ECDSA certificate dict.
+        eddsa_certificate: Responder's EdDSA certificate dict.
         chosen_algorithm: Symmetric algorithm agreed upon for this session.
     """
     return make_message(MSG_HELLO_ACK, {
-        "certificate":     certificate,
+        "ecdsaCertificate":     ecdsa_certificate,
+        "eddsaCertificate":     eddsa_certificate,
         "chosenAlgorithm": chosen_algorithm,
     })
 

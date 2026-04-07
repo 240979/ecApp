@@ -4,18 +4,37 @@ import socket
 import sys
 
 # team imports
+from config import DEFAULT_PORT, ALGO_AES_GCM, ALGO_CHACHA20, ALGO_AES_CBC_HMAC, SUPPORTED_ALGORITHMS, DEFAULT_SYMMETRIC_ALGO, get_ca_public_key
 from protocols.protocol import (
-    send_message, receive_message, 
-    make_sign_only_message, make_hello, make_hello_ack,
-    MSG_HELLO, MSG_HELLO_ACK, MSG_BYE, MSG_SIGN_ONLY, MSG_MESSAGE
+    send_message, receive_message, make_error, make_encrypted_message,
+    make_sign_only_message, make_hello, make_hello_ack, 
+    MSG_HELLO, MSG_HELLO_ACK, MSG_BYE, MSG_SIGN_ONLY, MSG_MESSAGE, make_bye
 )
-from config import DEFAULT_PORT, ALGO_AES_GCM, ALGO_CHACHA20, ALGO_AES_CBC_HMAC, SUPPORTED_ALGORITHMS
+from crypto.certificates import verify_certificate, get_public_key_from_cert
+from crypto.ecies import ecies_encrypt, ecies_decrypt
+from crypto.signing import eddsa_sign, eddsa_verify, signature_to_b64, signature_from_b64
+import json # Added for json.dumps in signing ECIES bundle
+
+# Global variables to hold session-specific crypto objects
+# These will be set during the handshake
+peer_ecdsa_pub_key = None
+peer_eddsa_pub_key = None
+session_symmetric_algo = None
+
+# User's own crypto objects (passed from main_app.py)
+user_ecdsa_priv_key = None
+user_eddsa_priv_key = None
+user_ecdsa_cert = None
+user_eddsa_cert = None
+
+chat_active_event = threading.Event()
+
 
 def receive_thread(sock: socket.socket, is_encrypted: bool = False):
     """Thread that constantly listens on the socket."""
-    while True:
+    while chat_active_event.is_set(): # Loop as long as chat is active
         try:
-            msg: dict = receive_message(sock)
+            msg: dict = receive_message(sock) # This can block
             m_type: str = msg['type']
             payload: str = msg['payload']
 
@@ -24,88 +43,256 @@ def receive_thread(sock: socket.socket, is_encrypted: bool = False):
                 break
 
             elif m_type == MSG_SIGN_ONLY:
-                print(f"\n[Partner - PLAIN]: {payload.get('plaintext') }")
+                # For MSG_SIGN_ONLY, we expect plaintext and a signature
+                plaintext = payload.get('plaintext')
+                signature_b64 = payload.get('signature')
+                signing_algo = payload.get('signingAlgorithm')
+
+                if peer_eddsa_pub_key and signing_algo == "EdDSA": # Assuming EdDSA for SIGN_ONLY
+                    if eddsa_verify(peer_eddsa_pub_key, plaintext.encode('utf-8'), signature_from_b64(signature_b64)):
+                        print(f"\n[Partner - PLAIN, VERIFIED]: {plaintext}")
+                    else:
+                        print(f"\n[Partner - PLAIN, FAILED VERIFICATION]: {plaintext}")
+                else:
+                    print(f"\n[Partner - PLAIN]: {plaintext}")
             
             elif m_type == MSG_MESSAGE:
                 if is_encrypted:
-
                     # DECRYPTION WILL BE HERE
+                    try:
+                        ecies_bundle = payload.get('eciesBundle')
+                        signature_b64 = payload.get('signature')
+                        signing_algo = payload.get('signingAlgorithm')
 
-                    print(f"\n[Partner - ENCRYPTED]: (Not implemented yet)")
+                        # Verify signature over the ECIES bundle
+                        # The actual plaintext is inside the bundle, so we sign the bundle itself
+                        if peer_eddsa_pub_key and signing_algo == "EdDSA" and \
+                           eddsa_verify(peer_eddsa_pub_key, json.dumps(ecies_bundle, separators=(",", ":")).encode('utf-8'), signature_from_b64(signature_b64)):
+                            
+                            # Decrypt the message
+                            decrypted_bytes = ecies_decrypt(user_ecdsa_priv_key, ecies_bundle)
+                            print(f"\n[Partner - ENCRYPTED, VERIFIED]: {decrypted_bytes.decode('utf-8')}")
+                        else:
+                            print(f"\n[Partner - ENCRYPTED, FAILED VERIFICATION]: (Could not verify signature or no peer key) {ecies_bundle}")
+
+                    except Exception as decrypt_e:
+                        print(f"\n[Partner - ENCRYPTED, DECRYPTION FAILED]: {decrypt_e}")
                 else:
                     print("\n[Warning] Encrypted message received in unencrypted mode!")
 
-            print("My message: ", end="", flush=True)
-            
-        except Exception as e:
-            print(f"\n[Error] Reception interrupted: {e}")
+        except ConnectionError:
+            print("\n[System] Peer disconnected unexpectedly.")
             break
+        except Exception as e: # Catch other unexpected errors
+            print(f"\n[Error] Reception interrupted due to unexpected error: {type(e).__name__}: {e}")
+            break
+    
+    # Signal the main thread that this thread is done
+    chat_active_event.clear() # Ensure event is cleared on thread exit
+    print("[System] Receive thread terminated.")
 
 def run_chat(sock: socket.socket, is_encrypted: bool = False):
     """Main loop for sending messages."""
-    # Start the receiving thread
-    rx = threading.Thread(target=receive_thread, args=(sock, is_encrypted), daemon=True)
-    rx.start()
+    global chat_active_event
 
     mode_str = "ENCRYPTED" if is_encrypted else "UNENCRYPTED (DEBUG)"
     print(f"--- Chat started [{mode_str}] ---")
-
     print("--- Chat started (type 'exit' to quit) ---")
-    while True:
-        text = input("My message: ")
-        if text.lower() == "exit":
-            send_message(sock, {"type": "BYE", "payload": {}})
-            break
-        
-        if is_encrypted:
 
-            # Later we will call your ECIES function here
-            # msg = make_encrypted_message(...)
+    chat_active_event.set() # Mark chat as active ONCE, BEFORE starting the thread
+    # Start the receiving thread ONCE per chat session
+    rx = threading.Thread(target=receive_thread, args=(sock, is_encrypted), daemon=True)
+    rx.start()
 
-            print("[System] Encryption not implemented yet.")
-        else:
-            # Demo mode - signed plaintext only
-            msg = make_sign_only_message(text, "debug_sig", "NONE")
-            send_message(sock, msg)
+    try:
+        while chat_active_event.is_set(): # Loop as long as chat is active
+            try:
+                text = input("My message: ") # This can block
+                # If chat was terminated by receive_thread while input() was blocking,
+                # we should break immediately after input() returns.
+                if not chat_active_event.is_set():
+                    break
+            except EOFError: # Handle Ctrl+D
+                print("\n[System] EOF detected. Exiting chat.")
+                text = "exit" # Simulate exit command
+            except KeyboardInterrupt: # Handle Ctrl+C
+                print("\n[System] Keyboard interrupt detected. Exiting chat.")
+                text = "exit" # Simulate exit command
 
-def main():
-    mode: str = input("Choose mode (s = server / c = client):").lower()
-    crypto_choice: str = input("Enable encryption? (y/n): ").lower()
-    be_encrypted: bool = crypto_choice == 'y'
+            if text.lower() == "exit":
+                try:
+                    send_message(sock, make_bye())
+                except Exception as e:
+                    print(f"[System Warning] Failed to send BYE message: {e}")
+                break
+            
+            # Convert text to bytes for crypto operations
+            message_bytes = text.encode('utf-8')
+
+            if is_encrypted:
+                if not peer_ecdsa_pub_key or not user_eddsa_priv_key or not session_symmetric_algo:
+                    print("[System Error] Cannot send encrypted message: peer public key, user private key, or symmetric algorithm not established.")
+                    continue
+                
+                try:
+                    # Encrypt the message using ECIES
+                    ecies_bundle = ecies_encrypt(peer_ecdsa_pub_key, message_bytes, algorithm=session_symmetric_algo)
+                    
+                    # Sign the ECIES bundle (not the plaintext)
+                    signature = eddsa_sign(user_eddsa_priv_key, json.dumps(ecies_bundle, separators=(",", ":")).encode('utf-8'))
+                    signature_b64 = signature_to_b64(signature)
+
+                    msg = make_encrypted_message(ecies_bundle, signature_b64, "EdDSA") # Assuming EdDSA for signing
+                    send_message(sock, msg)
+                    print(f"[Me - ENCRYPTED]: {text}")
+
+                except Exception as e:
+                    print(f"[System Error] Failed to encrypt or sign message: {e}")
+                    # Fallback or error handling
+                    msg = make_sign_only_message(text, "ERROR_SIG", "NONE") # Send unencrypted with error
+                    send_message(sock, msg)
+
+            else:
+                # Demo mode - signed plaintext only
+                if not user_eddsa_priv_key:
+                    print("[System Error] Cannot sign message: user private key not loaded.")
+                    signature_b64 = "NO_KEY_SIG"
+                else:
+                    signature = eddsa_sign(user_eddsa_priv_key, message_bytes)
+                    signature_b64 = signature_to_b64(signature)
+
+                msg = make_sign_only_message(text, signature_b64, "EdDSA") # Assuming EdDSA for signing
+                send_message(sock, msg)
+                print(f"[Me - PLAIN]: {text}")
+        chat_active_event.clear() # Ensure event is cleared even if an error occurs
+        rx.join(timeout=1) # Give receive thread a moment to clean up
+        print("[System] Chat session ended.")
+        sock.close() # Close the connection socket here
+    except Exception as e:
+        print(f"[System Error] An unexpected error occurred in run_chat: {e}")
+    finally:
+        chat_active_event.clear() # Ensure event is cleared even if an error occurs
+        rx.join(timeout=1) # Give receive thread a moment to clean up
 
 
+# The 'server' socket is closed by the server branch.
+# The 'conn' socket is closed by run_chat.
+def start_chat_app( # This function was previously missing a 'finally' block for server.close()
+    username: str,
+    password: str,
+    mode: str,
+    be_encrypted: bool,
+    user_ecdsa_priv,
+    user_eddsa_priv,
+    user_ecdsa_certificate: dict,
+    user_eddsa_certificate: dict
+):
+    """
+    Starts the chat application with pre-loaded user credentials.
+    """
+    global user_ecdsa_priv_key, user_eddsa_priv_key, user_ecdsa_cert, user_eddsa_cert
+    global peer_ecdsa_pub_key, peer_eddsa_pub_key, session_symmetric_algo
+
+    user_ecdsa_priv_key = user_ecdsa_priv
+    user_eddsa_priv_key = user_eddsa_priv
+    user_ecdsa_cert = user_ecdsa_certificate
+    user_eddsa_cert = user_eddsa_certificate
+
+
+
+    ca_public_key = get_ca_public_key()
+
+    conn = None
     if mode == 's':
         server: socket.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         server.bind(("0.0.0.0", DEFAULT_PORT))
         server.listen(1)
         print(f"Server listening on port {DEFAULT_PORT}...")
-        conn, addr = server.accept()
+        conn, _ = server.accept() # This blocks until a client connects
+        print(f"Connection established with client.")
 
         # Server receives HELLO from the client
-        hello = receive_message(conn)
-        print(f"[Handshake] Client connected and proposes: {hello['payload']['supportedAlgorithms']}")
+        hello = receive_message(conn) #
+        peer_ecdsa_hello_cert = hello['payload']['ecdsaCertificate'] #
+        peer_eddsa_hello_cert = hello['payload']['eddsaCertificate'] #
+        peer_supported_algs = hello['payload']['supportedAlgorithms']
+
+        # Verify client's ECDSA certificate
+        if not verify_certificate(peer_ecdsa_hello_cert, ca_public_key): #
+            print("[Handshake Error] Client ECDSA certificate verification failed. Disconnecting.")
+            send_message(conn, make_error("Client ECDSA certificate invalid."))
+            conn.close()
+            return
+        # Verify client's EdDSA certificate
+        if not verify_certificate(peer_eddsa_hello_cert, ca_public_key): #
+            print("[Handshake Error] Client EdDSA certificate verification failed. Disconnecting.")
+            send_message(conn, make_error("Client EdDSA certificate invalid."))
+            conn.close()
+            return
+        
+        peer_ecdsa_pub_key = get_public_key_from_cert(peer_ecdsa_hello_cert) #
+        peer_eddsa_pub_key = get_public_key_from_cert(peer_eddsa_hello_cert) #
+
+        print(f"[Handshake] Client '{peer_ecdsa_hello_cert['subject']}' connected and proposes: {peer_supported_algs}") #
         
         # Server responds with ACK and confirms encryption
-        ack = make_hello_ack({"id": "server_cert"}, "AES-GCM" if be_encrypted else "NONE")
+        if be_encrypted and DEFAULT_SYMMETRIC_ALGO in peer_supported_algs:
+            session_symmetric_algo = DEFAULT_SYMMETRIC_ALGO
+        else:
+            session_symmetric_algo = "NONE"
+
+        ack = make_hello_ack(user_ecdsa_cert, user_eddsa_cert, session_symmetric_algo) #
         send_message(conn, ack)
         
-        run_chat(conn, be_encrypted)
+        try:
+            run_chat(conn, session_symmetric_algo != "NONE") # This will close 'conn'
+        finally:
+            server.close() # Ensure server socket is closed even if run_chat crashes
     else:
         ip: str = input("Enter server IP address: ")
         conn: socket.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         conn.connect((ip, DEFAULT_PORT))
+        print(f"Connected to server at {ip}:{DEFAULT_PORT}")
 
         # Client sends HELLO
-        algs = SUPPORTED_ALGORITHMS if be_encrypted else ["NONE"]
-        hello = make_hello({"id": "client_cert"}, algs)
+        client_supported_algs = SUPPORTED_ALGORITHMS if be_encrypted else ["NONE"] #
+        hello = make_hello(user_ecdsa_cert, user_eddsa_cert, client_supported_algs) #
         send_message(conn, hello)
 
         # Client waits for acknowledgment from the server
-        ack = receive_message(conn)
-        final_enc = (ack['payload']['chosenAlgorithm'] != "NONE")
-        
-        run_chat(conn, final_enc)
+        ack = receive_message(conn) #
+        peer_ecdsa_ack_cert = ack['payload']['ecdsaCertificate'] #
+        peer_eddsa_ack_cert = ack['payload']['eddsaCertificate'] #
+        chosen_algorithm = ack['payload']['chosenAlgorithm']
 
-if __name__ == "__main__":
-    main()
+        # Verify server's ECDSA certificate
+        if not verify_certificate(peer_ecdsa_ack_cert, ca_public_key): #
+            print("[Handshake Error] Server ECDSA certificate verification failed. Disconnecting.")
+            send_message(conn, make_error("Server ECDSA certificate invalid."))
+            conn.close()
+            return
+        # Verify server's EdDSA certificate
+        if not verify_certificate(peer_eddsa_ack_cert, ca_public_key): #
+            print("[Handshake Error] Server EdDSA certificate verification failed. Disconnecting.")
+            send_message(conn, make_error("Server EdDSA certificate invalid."))
+            conn.close()
+            return
+
+        peer_ecdsa_pub_key = get_public_key_from_cert(peer_ecdsa_ack_cert) #
+        peer_eddsa_pub_key = get_public_key_from_cert(peer_eddsa_ack_cert) #
+
+        print(f"[Handshake] Server '{peer_ecdsa_ack_cert['subject']}' acknowledged with algorithm: {chosen_algorithm}") #
+
+        if chosen_algorithm != "NONE":
+            session_symmetric_algo = chosen_algorithm
+            final_enc = True
+        else:
+            session_symmetric_algo = "NONE"
+            final_enc = False
+        
+        try:
+            run_chat(conn, final_enc) # This will close 'conn'
+        finally:
+            if conn: # Ensure client connection socket is closed even if run_chat crashes
+                conn.close()

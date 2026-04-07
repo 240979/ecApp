@@ -18,7 +18,7 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM, ChaCha20Poly1305
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives import padding
 
-from keys import generate_ecdsa_keypair, public_key_to_b64, public_key_from_b64
+from crypto.keys import generate_ecdsa_keypair, public_key_to_b64, public_key_from_b64
 
 ALGO_AES_GCM        = "AES-256-GCM"
 ALGO_CHACHA20       = "ChaCha20-Poly1305"
