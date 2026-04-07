@@ -11,20 +11,16 @@ Signature should sign all previous values, but not itself.
 """
 
 import json
-import base64
 import os
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey
-from cryptography.hazmat.primitives.asymmetric import ec
-from keys import (
-    generate_eddsa_keypair,
+
+from crypto.keys import (
     public_key_to_b64,
     public_key_from_b64,
     save_private_key,
-    load_private_key,
     save_public_key,
-    load_public_key,
 )
-from signing import eddsa_sign, eddsa_verify, signature_to_b64, signature_from_b64
+from crypto.signing import eddsa_sign, eddsa_verify, signature_to_b64, signature_from_b64
+
 
 def _cert_payload(cert: dict) -> bytes:
     """
