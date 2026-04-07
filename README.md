@@ -43,8 +43,23 @@ Linux
 ``` bash
     pip install -r requirements.txt
 ```
+### 4. Launch
 
-### 4. Exit the Virtual Environment
+``` bash
+    python main_app.py
+```
+For debugging reasons, you can launch two apps on one machine.
+To do this, you run the first as
+``` bash
+    python main_app.py --debug-local
+```
+and the second and the second with 
+``` bash
+    python main_app.py --debug-remote
+```
+This ensures that the apps will not fight over TCP port 25519, which is default.
+You can then use "localhost" as target IP address.
+### 5. Exit the Virtual Environment
 ``` bash
     deactivate
 ```
