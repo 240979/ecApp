@@ -205,9 +205,10 @@ def start_chat_app(
 
     print("Establishing P2P connection...")
     try:
-        conn = establish_connection(peer_ip, debug_mode)
+        # Get both the socket and our actual role in the connection
+        conn, am_initiator = establish_connection(peer_ip, debug_mode)
     except Exception as e:
-        print(f"Failed to establish connection: {e}")
+        print(f"Failed: {e}")
         return
 
     try:
@@ -215,7 +216,8 @@ def start_chat_app(
 
         # If no IP was provided, we acted as the passive listener.
         # We act as the handshake Responder (wait for HELLO, send ACK).
-        if not peer_ip:
+        if not am_initiator:
+            print("Acting as Handshake Responder...")
             hello = receive_message(conn)
             peer_ecdsa_hello_cert = hello['payload']['ecdsaCertificate']
             peer_eddsa_hello_cert = hello['payload']['eddsaCertificate']
@@ -249,6 +251,7 @@ def start_chat_app(
         # If an IP was provided, we actively connected.
         # We act as the handshake Initiator (send HELLO, wait for ACK).
         else:
+            print("Acting as Handshake Initiator...")
             client_supported_algs = SUPPORTED_ALGORITHMS if be_encrypted else ["NONE"]
             hello = make_hello(user_ecdsa_cert, user_eddsa_cert, client_supported_algs)
             send_message(conn, hello)

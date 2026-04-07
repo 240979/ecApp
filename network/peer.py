@@ -54,13 +54,14 @@ class PeerConnection:
             listen_port:  Port to listen on for incoming connections.
             connect_port: Port to connect to on the remote peer.
         """
+        self.is_initiator = False
         self.listen_port  = listen_port
         self.connect_port = connect_port
         self.sock: Optional[socket.socket] = None
         self._lock = threading.Lock()
         self._connected = threading.Event()
 
-    def connect(self, peer_ip: Optional[str] = None) -> socket.socket:
+    def connect(self, peer_ip: Optional[str] = None) -> tuple[socket.socket, bool]:
         """
         Establish a P2P connection.
 
@@ -104,7 +105,7 @@ class PeerConnection:
                 f"No connection established within {CONNECT_TIMEOUT} seconds."
             )
 
-        return self.sock
+        return self.sock, self.is_initiator
 
     def _listen(self):
         """Listen for an incoming connection."""
@@ -116,7 +117,12 @@ class PeerConnection:
             server.bind(("0.0.0.0", self.listen_port))
             server.listen(1)
             conn, addr = server.accept()
-            self._set_connection(conn)
+            conn.settimeout(None)
+            with self._lock:
+                if not self._connected.is_set():
+                    self.is_initiator = False  # This is the responder
+                    self.sock = conn
+                    self._connected.set()
             print(f"Peer connected from {addr[0]}:{addr[1]}")
         except socket.timeout:
             pass   # connector thread may have already succeeded
@@ -134,7 +140,11 @@ class PeerConnection:
                 sock.settimeout(3)
                 sock.connect((peer_ip, self.connect_port))
                 sock.settimeout(None)
-                self._set_connection(sock)
+                with self._lock:
+                    if not self._connected.is_set():
+                        self.is_initiator = True  # This is the initiator
+                        self.sock = sock
+                        self._connected.set()
                 print(f"Connected to {peer_ip}:{self.connect_port}")
                 return
             except (ConnectionRefusedError, socket.timeout):
@@ -171,7 +181,7 @@ def get_ports(debug_mode: Optional[str] = None) -> tuple:
         return DEFAULT_PORT, DEFAULT_PORT
 
 
-def establish_connection(peer_ip: Optional[str], debug_mode: Optional[str] = None) -> socket.socket:
+def establish_connection(peer_ip: Optional[str], debug_mode: Optional[str] = None) -> tuple[socket.socket, bool]:
     """
     High-level function to establish a P2P connection.
 
