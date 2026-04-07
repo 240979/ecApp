@@ -130,6 +130,7 @@ def handle_login_and_chat(debug_mode):
     #     print("Invalid mode. Please choose 's' for server or 'c' for client.")
     #     return
     peer_ip = input("Enter peer IP (or press Enter to wait for connection): ").strip()
+    peer_ip = peer_ip if peer_ip else None # If only enter is the input, better make sure that the IP is really None
     crypto_choice = input("Enable encryption? (y/n): ").lower()
     be_encrypted = crypto_choice == 'y'
 
