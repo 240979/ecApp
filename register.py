@@ -112,13 +112,13 @@ Next step:
 
 The CA admin will run:
     python ca_sign.py --csr {csr_path}
+    or will use main app interface to sign
 
 And send back two certificate files:
     {os.path.join(user_dir, "ecdsa_cert.json")}
     {os.path.join(user_dir, "eddsa_cert.json")}
 
-Once you have your certificates, you can run the app:
-    python client/client.py --username {username}
+Once you have your certificates, you can run the app.
 """)
 
 
