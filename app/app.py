@@ -188,7 +188,8 @@ def start_chat_app(
         user_ecdsa_certificate: dict,
         user_eddsa_certificate: dict,
         peer_ip: str = None,  # Added for P2P routing
-        debug_mode: str = None  # Added for P2P local debugging
+        debug_mode: str = None,  # Added for P2P local debugging
+        preferred_symmetric_algo: str = "NONE" # New argument for client's preferred algorithm
 ):
     """
     Starts the chat application with pre-loaded user credentials over a P2P connection.
@@ -238,10 +239,16 @@ def start_chat_app(
             print(
                 f"[Handshake] Peer '{peer_ecdsa_hello_cert['subject']}' connected and proposes: {peer_supported_algs}")
 
-            if be_encrypted and DEFAULT_SYMMETRIC_ALGO in peer_supported_algs:
-                session_symmetric_algo = DEFAULT_SYMMETRIC_ALGO
-            else:
-                session_symmetric_algo = "NONE"
+            # Responder's negotiation logic: iterate through peer's preferences and pick the first common one
+            session_symmetric_algo = "NONE"
+            if be_encrypted:
+                for algo in peer_supported_algs:
+                    if algo in SUPPORTED_ALGORITHMS:
+                        session_symmetric_algo = algo
+                        break
+                if session_symmetric_algo == "NONE":
+                    print("[Handshake] No common encryption algorithm found with peer. Proceeding without encryption.")
+            
 
             ack = make_hello_ack(user_ecdsa_cert, user_eddsa_cert, session_symmetric_algo)
             send_message(conn, ack)
@@ -253,7 +260,20 @@ def start_chat_app(
         else:
             print("Acting as Handshake Initiator...")
             client_supported_algs = SUPPORTED_ALGORITHMS if be_encrypted else ["NONE"]
-            hello = make_hello(user_ecdsa_cert, user_eddsa_cert, client_supported_algs)
+            
+            # Initiator's supported algorithms, with preferred_symmetric_algo first if encryption is enabled
+            client_supported_algs = []
+            if be_encrypted and preferred_symmetric_algo != "NONE":
+                client_supported_algs.append(preferred_symmetric_algo)
+                for algo in SUPPORTED_ALGORITHMS:
+                    if algo != preferred_symmetric_algo:
+                        client_supported_algs.append(algo)
+            elif be_encrypted: # If preferred_symmetric_algo is NONE but encryption is enabled, send all supported
+                client_supported_algs = SUPPORTED_ALGORITHMS[:]
+            else:
+                client_supported_algs = ["NONE"]
+
+            hello = make_hello(user_ecdsa_cert, user_eddsa_cert, client_supported_algs) # Use the newly constructed client_supported_algs
             send_message(conn, hello)
 
             ack = receive_message(conn)

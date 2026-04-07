@@ -37,8 +37,23 @@ DEBUG_LOCAL_PORT  = DEFAULT_PORT - 1   # 25518
 DEBUG_REMOTE_PORT = DEFAULT_PORT       # 25519
 
 # How long to wait for outgoing connection before giving up (seconds)
-CONNECT_TIMEOUT = 30
+CONNECT_TIMEOUT = 60
 
+
+def get_local_ip() -> str:
+    """
+    Determines the local IP address by attempting to connect to a well-known external host.
+    This doesn't actually establish a connection, but forces the OS to select an interface.
+    """
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect(('10.255.255.255', 1)) # Doesn't matter if this address is reachable
+        IP = s.getsockname()[0]
+    except Exception:
+        IP = '127.0.0.1' # Fallback to localhost
+    finally:
+        s.close()
+    return IP
 
 class PeerConnection:
     """
@@ -75,6 +90,8 @@ class PeerConnection:
         Returns:
             Connected socket.
         """
+        local_ip = get_local_ip()
+
         threads = []
 
         # Always start listener
@@ -94,9 +111,9 @@ class PeerConnection:
             )
             connector_thread.start()
             threads.append(connector_thread)
-            print(f"Connecting to {peer_ip}:{self.connect_port} ...")
+            print(f"Connecting from {local_ip} to {peer_ip}:{self.connect_port} ...")
         else:
-            print(f"Waiting for peer on port {self.listen_port} ...")
+            print(f"Waiting for peer on {local_ip}:{self.listen_port} ...")
 
         # Wait until one of them succeeds
         connected = self._connected.wait(timeout=CONNECT_TIMEOUT)
@@ -123,7 +140,7 @@ class PeerConnection:
                     self.is_initiator = False  # This is the responder
                     self.sock = conn
                     self._connected.set()
-            print(f"Peer connected from {addr[0]}:{addr[1]}")
+            print(f"Peer connected from {addr[0]}:{addr[1]} to {conn.getsockname()[0]}:{conn.getsockname()[1]}")
         except socket.timeout:
             pass   # connector thread may have already succeeded
         except OSError:
@@ -145,7 +162,7 @@ class PeerConnection:
                         self.is_initiator = True  # This is the initiator
                         self.sock = sock
                         self._connected.set()
-                print(f"Connected to {peer_ip}:{self.connect_port}")
+                print(f"Connected from {sock.getsockname()[0]} to {peer_ip}:{self.connect_port}")
                 return
             except (ConnectionRefusedError, socket.timeout):
                 attempts += 1

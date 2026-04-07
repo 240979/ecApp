@@ -9,7 +9,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 from register import register as run_register_script
 from ca_sign import sign_csr, revoke_user, list_users
 from app.app import start_chat_app # We will refactor app.app.main into start_chat_app
-from config import USER_KEYS_DIR, CA_PASSWORD_HASH_FILE
+from config import USER_KEYS_DIR, CA_PASSWORD_HASH_FILE, SUPPORTED_ALGORITHMS
 from crypto.keys import load_private_key, verify_password, hash_password # Added hash_password for completeness, verify_password is key
 from crypto.certificates import load_certificate, verify_certificate
 from config import get_ca_public_key
@@ -157,7 +157,25 @@ def handle_login_and_chat(debug_mode):
     peer_ip = input("Enter peer IP (or press Enter to wait for connection): ").strip()
     peer_ip = peer_ip if peer_ip else None # If only enter is the input, better make sure that the IP is really None
     crypto_choice = input("Enable encryption? (y/n): ").lower()
+
+    preferred_symmetric_algo = "NONE"
     be_encrypted = crypto_choice == 'y'
+
+    if be_encrypted:
+        print("\nAvailable symmetric encryption algorithms:")
+        for i, algo in enumerate(SUPPORTED_ALGORITHMS):
+            print(f"{i+1}. {algo}")
+        
+        while True:
+            try:
+                algo_index = int(input(f"Choose your preferred algorithm (1-{len(SUPPORTED_ALGORITHMS)}): ").strip()) - 1
+                if 0 <= algo_index < len(SUPPORTED_ALGORITHMS):
+                    preferred_symmetric_algo = SUPPORTED_ALGORITHMS[algo_index]
+                    break
+                else:
+                    print("Invalid choice. Please enter a number within the range.")
+            except ValueError:
+                print("Invalid input. Please enter a number.")
 
     # Call the refactored app.app function
     start_chat_app(
@@ -169,7 +187,8 @@ def handle_login_and_chat(debug_mode):
         user_ecdsa_priv=user_ecdsa_priv,
         user_eddsa_priv=user_eddsa_priv,
         user_ecdsa_certificate=user_ecdsa_cert,
-        user_eddsa_certificate=user_eddsa_cert
+        user_eddsa_certificate=user_eddsa_cert,
+        preferred_symmetric_algo=preferred_symmetric_algo
     )
 
 
