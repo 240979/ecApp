@@ -27,8 +27,8 @@ import base64
 import argparse
 import getpass
 
-from config import CA_KEYS_DIR, USER_KEYS_DIR
-from crypto.keys import load_private_key, public_key_from_b64, derive_key_from_password
+from config import CA_KEYS_DIR, USER_KEYS_DIR, CA_PASSWORD_HASH_FILE
+from crypto.keys import load_private_key, public_key_from_b64, derive_key_from_password, verify_password, hash_password
 from crypto.certificates import create_certificate, save_certificate
 
 # Encrypted registry
@@ -234,8 +234,9 @@ def _selftest():
     from crypto.keys import (
         generate_ecdsa_keypair, generate_eddsa_keypair,
         public_key_to_b64, save_private_key
-    )
+    ) # Removed hash_password from here, as it's imported from the top of the file
     from crypto.certificates import verify_certificate, load_certificate
+    from config import generate_ca_admin_password_hash # Import the new function
 
     print("=== ca_sign Self-test ===\n")
 
@@ -251,7 +252,9 @@ def _selftest():
         print("Error: CA private key not found. Run: python config.py --generate-ca")
         sys.exit(1)
 
-    ca_password = getpass.getpass("Enter CA admin password: ")
+    # Generate and save a test CA admin password hash
+    test_ca_admin_password = "test_ca_admin_password123"
+    generate_ca_admin_password_hash(test_ca_admin_password)
 
     # Create a test CSR
     ecdsa_priv, ecdsa_pub = generate_ecdsa_keypair()
@@ -268,6 +271,11 @@ def _selftest():
         json.dump(csr, f)
     print("Test CSR created")
 
+    # Authenticate with the test CA admin password
+    ca_password = test_ca_admin_password # Use the generated test password for subsequent operations
+    if not verify_password(ca_password, json.load(open(CA_PASSWORD_HASH_FILE))["hash"]):
+        print("Error: Incorrect CA admin password for self-test.")
+        sys.exit(1)
     # Sign it
     ecdsa_cert, eddsa_cert = sign_csr(csr_path, ca_password, auto_confirm=True)
 
@@ -328,8 +336,20 @@ def main():
     if args.test:
         _selftest()
     elif args.csr:
+        # Verify CA admin password against stored hash
+        if not os.path.exists(CA_PASSWORD_HASH_FILE):
+            print(f"Error: CA admin password not configured. Please run 'python config.py --generate-ca-admin-password' first.")
+            sys.exit(1)
+
+        with open(CA_PASSWORD_HASH_FILE, "r") as f:
+            stored_ca_admin_hash = json.load(f)["hash"]
         print("=== ecApp CA Signing Utility ===\n")
+
         ca_password = getpass.getpass("Enter CA admin password: ")
+        if not verify_password(ca_password, stored_ca_admin_hash):
+            print("Error: Incorrect CA admin password.")
+            sys.exit(1)
+
         sign_csr(args.csr, ca_password)
         print("\n=== Done ===")
     elif args.revoke:

@@ -9,20 +9,45 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 from register import register as run_register_script
 from ca_sign import sign_csr, revoke_user, list_users
 from app.app import start_chat_app # We will refactor app.app.main into start_chat_app
-from config import USER_KEYS_DIR
-from crypto.keys import load_private_key, verify_password
+from config import USER_KEYS_DIR, CA_PASSWORD_HASH_FILE
+from crypto.keys import load_private_key, verify_password, hash_password # Added hash_password for completeness, verify_password is key
 from crypto.certificates import load_certificate, verify_certificate
 from config import get_ca_public_key
 
 def handle_registration():
     """Handles the user registration process."""
     print("\n--- User Registration ---")
+    # Check if CA admin password is set, as registration requires CA to sign CSRs
+    if not os.path.exists(CA_PASSWORD_HASH_FILE):
+        print(
+            f"Error: CA admin password not configured. "
+            f"Please run 'python config.py --generate-ca-admin-password' first "
+            f"to set up the CA administrator."
+        )
+        # It's not strictly necessary to exit here, as registration itself doesn't need the CA password,
+        # but the next step (signing the CSR) does. This provides a heads-up.
+        # For now, let's allow registration but warn.
+        # sys.exit(1) # Uncomment if you want to strictly enforce CA setup before user registration
+
     run_register_script()
 
 def handle_ca_admin():
     """Handles CA administration tasks."""
     print("\n--- CA Administration ---")
     ca_password = getpass.getpass("Enter CA admin password: ")
+
+    # Verify CA admin password against stored hash
+    if not os.path.exists(CA_PASSWORD_HASH_FILE):
+        print(f"Error: CA admin password not configured. Please run 'python config.py --generate-ca-admin-password' first.")
+        return
+
+    with open(CA_PASSWORD_HASH_FILE, "r") as f:
+        stored_ca_admin_hash = json.load(f)["hash"]
+    
+    if not verify_password(ca_password, stored_ca_admin_hash):
+        print("Error: Incorrect CA admin password.")
+        return
+    print("CA admin authenticated.")
 
     while True:
         print("\nCA Admin Menu:")

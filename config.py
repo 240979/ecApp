@@ -46,8 +46,10 @@ def get_ca_public_key():
 # Dir organization
 
 CA_KEYS_DIR        = "ca/ca_keys"       # CA keys, this is gitignored
+CA_PASSWORD_HASH_FILE = "ca/ca_keys/password.json"
 USER_KEYS_DIR      = "client/keys"      # User keys, also gitignored
 LOG_DIR            = "logs"             # Dir for logs, also gitignored
+
 
 # Log organization
 
@@ -84,12 +86,37 @@ def generate_ca(password: str):
 
     return priv, pub
 
+def generate_ca_admin_password_hash(password: str):
+    """
+    Generate and save the Argon2 hash of the CA admin password.
+    """
+    import os
+    import json
+    from crypto.keys import hash_password
+
+    os.makedirs(os.path.dirname(CA_PASSWORD_HASH_FILE), exist_ok=True)
+    password_hash = hash_password(password)
+    with open(CA_PASSWORD_HASH_FILE, "w") as f:
+        json.dump({"hash": password_hash}, f, indent=2)
+
+    print("\n=== CA Admin Password Hash Generated ===")
+    print(f"Password hash saved to: {CA_PASSWORD_HASH_FILE}")
+    print("Remember this password for CA administration tasks.")
+    print()
+
 if __name__ == "__main__":
+    import os
+    
     parser = argparse.ArgumentParser(description="ecApp configuration helper")
     parser.add_argument(
         "--generate-ca",
         action="store_true",
         help="Generate a fresh CA keypair and print the public key to paste into config.py"
+    )
+    parser.add_argument(
+        "--generate-ca-admin-password",
+        action="store_true",
+        help="Generate and save the Argon2 hash for the CA admin password"
     )
     parser.add_argument(
         "--password",
@@ -106,8 +133,15 @@ if __name__ == "__main__":
             import getpass
             password = getpass.getpass("Enter password for CA private key: ")
         generate_ca(password)
+    elif args.generate_ca_admin_password:
+        password = args.password
+        if not password:
+            import getpass
+            password = getpass.getpass("Enter CA admin password: ")
+        generate_ca_admin_password_hash(password)
     else:
         print("ecApp Configuration")
         print(f"  Default algorithm:  {DEFAULT_SYMMETRIC_ALGO}")
         print(f"  Supported algorithms: {', '.join(SUPPORTED_ALGORITHMS)}")
         print(f"  CA key configured:  {'Yes' if CA_PUBLIC_KEY_B64 else 'No — run --generate-ca'}")
+        print(f"  CA Admin Password configured: {'Yes' if os.path.exists(CA_PASSWORD_HASH_FILE) else 'No — run --generate-ca-admin-password'}")
