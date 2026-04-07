@@ -106,7 +106,7 @@ def run_chat(sock: socket.socket, is_encrypted: bool = False):
     try:
         while chat_active_event.is_set(): # Loop as long as chat is active
             try:
-                text = input("My message: ") # This can block
+                text = input() # This can block
                 # If chat was terminated by receive_thread while input() was blocking,
                 # we should break immediately after input() returns.
                 if not chat_active_event.is_set():
@@ -143,7 +143,7 @@ def run_chat(sock: socket.socket, is_encrypted: bool = False):
 
                     msg = make_encrypted_message(ecies_bundle, signature_b64, "EdDSA") # Assuming EdDSA for signing
                     send_message(sock, msg)
-                    print(f"[Me - ENCRYPTED]: {text}")
+                    # print(f"[Me - ENCRYPTED]: {text}")
 
                 except Exception as e:
                     print(f"[System Error] Failed to encrypt or sign message: {e}")
