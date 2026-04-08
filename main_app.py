@@ -221,6 +221,7 @@ def handle_login_and_chat(debug_mode):
             print("Invalid choice.")
 
 def main():
+    """Main entry point for the ecApp."""
     import argparse
 
     parser = argparse.ArgumentParser()
@@ -229,7 +230,6 @@ def main():
     args = parser.parse_args()
 
     debug_mode = "local" if args.debug_local else "remote" if args.debug_remote else None
-    """Main entry point for the ecApp."""
     while True:
         print("\n=== ecApp Main Menu ===")
         print("1. Register a new user")
