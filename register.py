@@ -39,25 +39,35 @@ def register():
     username = input("Choose a username: ").strip()
     if not username:
         print("Error: username cannot be empty.")
-        sys.exit(1)
+        input("\nPress Enter to return to the main menu...")
+        return
+
 
     user_dir = os.path.join(USER_KEYS_DIR, username)
 
     if os.path.exists(user_dir):
         print(f"Error: user '{username}' already exists locally.")
-        sys.exit(1)
+        input("\nPress Enter to return to the main menu...")
+        return
+    # Prevent slashes in username
+    if "/" in username or "\\" in username:
+        print("Error: username cannot contain slashes ('/' or '\\').")
+        input("\nPress Enter to return to the main menu...")
+        return
 
     # 2: Password
-    password = getpass.getpass("Choose a password: ")
+    password = getpass.getpass("Choose a password (password must be at least 8 characters): ")
     password_confirm = getpass.getpass("Confirm password: ")
 
     if password != password_confirm:
         print("Error: passwords do not match.")
-        sys.exit(1)
+        input("\nPress Enter to return to the main menu...")
+        return
 
     if len(password) < 8:
         print("Error: password must be at least 8 characters.")
-        sys.exit(1)
+        input("\nPress Enter to return to the main menu...")
+        return
 
     # 3: Generate keypairs
     print("\nGenerating keypairs...")
