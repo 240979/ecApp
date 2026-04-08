@@ -7,13 +7,6 @@ A Python-based communication application with Elliptic curve cryptographic featu
 ### Prerequisites
 Ensure you have Python installed and a **virtual environment** set up in the root directory (`ecApp/venv`).
 
-### Running the Application
-To start the main application, navigate to the project root folder (`ecApp`) and run the following command within your activated virtual environment:
-
-```bash
-python -m app.app
-```
-
 ## Setup & Installation
 
 Since the virtual environment (`venv`) is ignored by Git, you need to set it up locally after cloning the repository.
@@ -59,7 +52,20 @@ and the second with
 ```
 This ensures that the apps will not fight over TCP port 25519, which is default.
 You can then use "localhost" as target IP address.
-### 5. Exit the Virtual Environment
+
+### 5. Benchmark and Tests
+This project includes an interactive testing suite (`tester.py`) to evaluate the performance and security of the cryptographic implementations. The tool provides three main functionalities:
+
+* **Performance Benchmarks:** Measures execution times for key generation, signing, verifying, and encrypting/decrypting across ECDSA, EdDSA, and ECIES algorithms.
+* **Security Validations:** Simulates in-memory attacks (e.g., bit-flipping, signature tampering, and identity spoofing) to ensure the integrity checks and AEAD backends correctly reject invalid or tampered data.
+* **Network Simulation:** Runs a local client-server loopback test, ideal for Wireshark inspection, to visibly demonstrate the difference between plaintext communication and ECIES-encrypted traffic over the wire.
+
+To launch the interactive testing interface, run the following command within your virtual environment:
+``` bash
+    python -m tester.tester
+```
+
+### 6. Exit the Virtual Environment
 ``` bash
     deactivate
 ```
