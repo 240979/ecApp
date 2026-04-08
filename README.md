@@ -30,7 +30,7 @@ You must activate the environment before running the app or installing packages.
 
 Windows/CLI
 ```bash
-    .\venv\Scripts\activate.ps1
+    .\venv\Scripts\Activate.ps1
 ```
 
 Linux
@@ -53,7 +53,7 @@ To do this, you run the first as
 ``` bash
     python main_app.py --debug-local
 ```
-and the second and the second with 
+and the second with 
 ``` bash
     python main_app.py --debug-remote
 ```
