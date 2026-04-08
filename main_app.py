@@ -150,41 +150,24 @@ def handle_login_and_chat(debug_mode):
         return
 
     continue_logged = True
+    be_encrypted = True  # default
+    preferred_symmetric_algo = SUPPORTED_ALGORITHMS[0] if SUPPORTED_ALGORITHMS else "NONE" # default
+
+    print(f"User '{username}' authenticated.")
+
     while continue_logged:
         print(f"\n--- Chat Menu (Logged in as: {username}) ---")
+        print(f"Current Setup: Encryption={'ON' if be_encrypted else 'OFF'}, Algo={preferred_symmetric_algo}")
         print("1. Start new chat session")
-        print("2. Logout and return to main menu")
+        print("2. Setup (Encryption & Algorithms)")
+        print("3. Logout and return to main menu")
 
         chat_choice = input("Select an option: ").strip()
 
         if chat_choice == '1':
             # Now, proceed to chat setup
-            # mode = input("Choose mode (s = server / c = client):").lower()
-            # if mode not in ['s', 'c']:
-            #     print("Invalid mode. Please choose 's' for server or 'c' for client.")
-            #     return
             peer_ip = input("Enter peer IP (or press Enter to wait for connection): ").strip()
             peer_ip = peer_ip if peer_ip else None # If only enter is the input, better make sure that the IP is really None
-            crypto_choice = input("Enable encryption? (y/n): ").lower()
-
-            preferred_symmetric_algo = "NONE"
-            be_encrypted = crypto_choice == 'y'
-
-            if be_encrypted:
-                print("\nAvailable symmetric encryption algorithms:")
-                for i, algo in enumerate(SUPPORTED_ALGORITHMS):
-                    print(f"{i+1}. {algo}")
-
-                while True:
-                    try:
-                        algo_index = int(input(f"Choose your preferred algorithm (1-{len(SUPPORTED_ALGORITHMS)}): ").strip()) - 1
-                        if 0 <= algo_index < len(SUPPORTED_ALGORITHMS):
-                            preferred_symmetric_algo = SUPPORTED_ALGORITHMS[algo_index]
-                            break
-                        else:
-                            print("Invalid choice. Please enter a number within the range.")
-                    except ValueError:
-                        print("Invalid input. Please enter a number.")
 
             # Call the refactored app.app function
             start_chat_app(
@@ -200,8 +183,40 @@ def handle_login_and_chat(debug_mode):
                 preferred_symmetric_algo=preferred_symmetric_algo
             )
         elif chat_choice == '2':
+            # SETUP MENU
+            print("\n--- Encryption Setup ---")
+
+            while True:
+                crypto_input = input("Enable encryption? (y/n): ").lower().strip()
+                if crypto_input in ['y', 'n']:
+                    be_encrypted = (crypto_input == 'y')
+                    break
+                else:
+                    print("Invalid input. Please enter 'y' for Yes or 'n' for No.")
+
+            if be_encrypted:
+                print("\nAvailable symmetric encryption algorithms:")
+                for i, algo in enumerate(SUPPORTED_ALGORITHMS):
+                    print(f"{i + 1}. {algo}")
+
+                while True:
+                    try:
+                        algo_index = int(input(f"Choose your preferred algorithm (1-{len(SUPPORTED_ALGORITHMS)}): ").strip()) - 1
+                        if 0 <= algo_index < len(SUPPORTED_ALGORITHMS):
+                            preferred_symmetric_algo = SUPPORTED_ALGORITHMS[algo_index]
+                            break
+                        else:
+                            print("Invalid choice. Please enter a number within the range.")
+                    except ValueError:
+                        print("Invalid input. Enter a number.")
+            else:
+                preferred_symmetric_algo = "NONE"
+
+            print("Setup updated successfully.")
+
+        elif chat_choice == '3':
             print("Logging out...")
-            continue_logged = False  # Ukončí tento cyklus a vrátí uživatele do hlavního menu
+            continue_logged = False
         else:
             print("Invalid choice.")
 
