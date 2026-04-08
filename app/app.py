@@ -13,6 +13,7 @@ from protocols.protocol import (
     make_sign_only_message, make_hello, make_hello_ack,
     MSG_BYE, MSG_SIGN_ONLY, MSG_MESSAGE, make_bye
 )
+from utils.logger import default_logger as logger
 
 # Global variables to hold session-specific crypto objects
 # These will be set during the handshake
@@ -71,11 +72,16 @@ def receive_thread(sock: socket.socket, is_encrypted: bool = False):
                             # Decrypt the message
                             decrypted_bytes = ecies_decrypt(user_ecdsa_priv_key, ecies_bundle)
                             print(f"\n[Partner - ENCRYPTED, VERIFIED]: {decrypted_bytes.decode('utf-8')}")
+                            logger.log_verify("EdDSA", len(decrypted_bytes), success=True)
+                            logger.log_decrypt(session_symmetric_algo, len(decrypted_bytes), success=True)
                         else:
                             print(f"\n[Partner - ENCRYPTED, FAILED VERIFICATION]: (Could not verify signature or no peer key) {ecies_bundle}")
+                            logger.log_verify("EdDSA", len(ecies_bundle), success=False)
+                            logger.log_auth_fail("Signature verification failed on incoming message")
 
                     except Exception as decrypt_e:
                         print(f"\n[Partner - ENCRYPTED, DECRYPTION FAILED]: {decrypt_e}")
+                        logger.log_tamper("ECIES ciphertext authentication failed")
                 else:
                     print("\n[Warning] Encrypted message received in unencrypted mode!")
 
@@ -136,10 +142,11 @@ def run_chat(sock: socket.socket, is_encrypted: bool = False):
                 try:
                     # Encrypt the message using ECIES
                     ecies_bundle = ecies_encrypt(peer_ecdsa_pub_key, message_bytes, algorithm=session_symmetric_algo)
-                    
+                    logger.log_encrypt(session_symmetric_algo, len(message_bytes))
                     # Sign the ECIES bundle (not the plaintext)
                     signature = eddsa_sign(user_eddsa_priv_key, json.dumps(ecies_bundle, separators=(",", ":")).encode('utf-8'))
                     signature_b64 = signature_to_b64(signature)
+                    logger.log_sign("EdDSA", len(message_bytes))
 
                     msg = make_encrypted_message(ecies_bundle, signature_b64, "EdDSA") # Assuming EdDSA for signing
                     send_message(sock, msg)
@@ -223,21 +230,27 @@ def start_chat_app(
             peer_ecdsa_hello_cert = hello['payload']['ecdsaCertificate']
             peer_eddsa_hello_cert = hello['payload']['eddsaCertificate']
             peer_supported_algs = hello['payload']['supportedAlgorithms']
+            peer_name = peer_ecdsa_hello_cert['subject']
 
             if not verify_certificate(peer_ecdsa_hello_cert, ca_public_key):
                 print("[Handshake Error] Peer ECDSA certificate verification failed. Disconnecting.")
+                logger.log_cert_verify(peer_name, success=False)
+                logger.log_auth_fail("Peer ECDSA certificate invalid")
                 send_message(conn, make_error("Peer ECDSA certificate invalid."))
                 return
             if not verify_certificate(peer_eddsa_hello_cert, ca_public_key):
                 print("[Handshake Error] Peer EdDSA certificate verification failed. Disconnecting.")
+                logger.log_cert_verify(peer_name, success=False)
+                logger.log_auth_fail("Peer EdDSA certificate invalid")
                 send_message(conn, make_error("Peer EdDSA certificate invalid."))
                 return
 
             peer_ecdsa_pub_key = get_public_key_from_cert(peer_ecdsa_hello_cert)
             peer_eddsa_pub_key = get_public_key_from_cert(peer_eddsa_hello_cert)
+            logger.log_cert_verify(peer_name, success=True)
 
             print(
-                f"[Handshake] Peer '{peer_ecdsa_hello_cert['subject']}' connected and proposes: {peer_supported_algs}")
+                f"[Handshake] Peer '{peer_name}' connected and proposes: {peer_supported_algs}")
 
             # Responder's negotiation logic: iterate through peer's preferences and pick the first common one
             session_symmetric_algo = "NONE"
@@ -280,21 +293,26 @@ def start_chat_app(
             peer_ecdsa_ack_cert = ack['payload']['ecdsaCertificate']
             peer_eddsa_ack_cert = ack['payload']['eddsaCertificate']
             chosen_algorithm = ack['payload']['chosenAlgorithm']
+            peer_name = peer_ecdsa_ack_cert['subject']
 
             if not verify_certificate(peer_ecdsa_ack_cert, ca_public_key):
                 print("[Handshake Error] Peer ECDSA certificate verification failed. Disconnecting.")
+                logger.log_cert_verify(peer_name, success=False)
+                logger.log_auth_fail("Peer ECDSA certificate invalid")
                 send_message(conn, make_error("Peer ECDSA certificate invalid."))
                 return
             if not verify_certificate(peer_eddsa_ack_cert, ca_public_key):
                 print("[Handshake Error] Peer EdDSA certificate verification failed. Disconnecting.")
+                logger.log_cert_verify(peer_name, success=False)
+                logger.log_auth_fail("Peer EdDSA certificate invalid")
                 send_message(conn, make_error("Peer EdDSA certificate invalid."))
                 return
 
             peer_ecdsa_pub_key = get_public_key_from_cert(peer_ecdsa_ack_cert)
             peer_eddsa_pub_key = get_public_key_from_cert(peer_eddsa_ack_cert)
-
+            logger.log_cert_verify(peer_name, success=True)
             print(
-                f"[Handshake] Peer '{peer_ecdsa_ack_cert['subject']}' acknowledged with algorithm: {chosen_algorithm}")
+                f"[Handshake] Peer '{peer_name}' acknowledged with algorithm: {chosen_algorithm}")
 
             if chosen_algorithm != "NONE":
                 session_symmetric_algo = chosen_algorithm

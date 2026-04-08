@@ -1,21 +1,18 @@
-import time
-import os
 import base64
+import json
 import socket
 import threading
-import json
-from cryptography.exceptions import InvalidTag
-from cryptography.hazmat.primitives.ciphers.aead import AESGCM, ChaCha20Poly1305
+import time
+from utils.logger import default_logger as logger
 
-# Imports from team project 
-# 
+# Imports from team project
+#
 from config import DEFAULT_PORT
-
 from crypto.ecies import (
     ecies_encrypt, ecies_decrypt, SUPPORTED_ALGORITHMS, ALGO_AES_GCM
 )
 from crypto.keys import (
-    generate_ecdsa_keypair, 
+    generate_ecdsa_keypair,
     generate_eddsa_keypair,
     public_key_to_b64
 )
@@ -23,11 +20,12 @@ from crypto.signing import (
     ecdsa_sign, ecdsa_verify,
     eddsa_sign, eddsa_verify
 )
-
 from protocols.protocol import (
-    send_message, receive_message, 
-    make_sign_only_message, make_encrypted_message, make_error, serialize
+    send_message, receive_message,
+    make_sign_only_message, make_encrypted_message
 )
+from utils.logger import default_logger as logger
+
 
 def get_key_size_bytes(public_key) -> int:
     """Helper to determine the actual public key size in bytes from DER format."""
@@ -150,12 +148,14 @@ def demonstrate_failures():
     try:
         if not ecdsa_verify(alice_ecdsa_pub, message, bytes(tampered_ecdsa)):
             print("-> SUCCESS: ecdsa_verify returned False. Tampered ECDSA signature was rejected.")
+            logger.log_tamper("ECDSA signature byte flipped")
     except Exception as e:
         print(f"-> SUCCESS: ecdsa_verify failed with exception (likely invalid DER structure): {type(e).__name__}")
 
     print("[Test 1.2] Verifying valid ECDSA signature with a different public key (Identity spoofing)")
     if not ecdsa_verify(eva_ecdsa_pub, message, valid_ecdsa_sig):
         print("-> SUCCESS: ecdsa_verify returned False. Eva's key cannot verify Alice's ECDSA signature.")
+        logger.log_auth_fail("Wrong public key used for ECDSA verify")
 
     # --- 2. EdDSA Failures ---
     print("\n--- 2. EdDSA Signatures (Ed25519) ---")
@@ -168,10 +168,12 @@ def demonstrate_failures():
     tampered_eddsa[10] ^= 0xFF
     if not eddsa_verify(alice_eddsa_pub, message, bytes(tampered_eddsa)):
         print("-> SUCCESS: eddsa_verify returned False. Tampered signature was rejected.")
+        logger.log_tamper("EdDSA signature byte flipped")
 
     print("[Test 2.2] Verifying valid EdDSA signature with a different public key (Identity spoofing)")
     if not eddsa_verify(eva_eddsa_pub, message, valid_eddsa_sig):
         print("-> SUCCESS: eddsa_verify returned False. Eva's key cannot verify Alice's signature.")
+        logger.log_tamper("EdDSA signature byte flipped")
 
    # --- 3. ECIES Failures ---
     print("\n--- 3. ECIES Encryption (AEAD Integrity) ---")
@@ -190,6 +192,7 @@ def demonstrate_failures():
         print("-> FAILURE: ECIES decrypted tampered data! (This should not happen)")
     except Exception as e:
         print(f"-> SUCCESS: ECIES decryption failed as expected! Caught exception: {type(e).__name__}")
+        logger.log_decrypt(ALGO_AES_GCM, len(ct_bytes), success=False)
 
 # --- NETWORK SIMULATION ---
 
@@ -221,10 +224,12 @@ def network_server_thread(server_ecdsa_priv):
         ecies_bundle2 = msg2['payload']['eciesBundle']
         decrypted_msg = ecies_decrypt(server_ecdsa_priv, ecies_bundle2)
         print(f"         -> Successfully decrypted: {decrypted_msg.decode('utf-8')}")
+        logger.log_decrypt("ECIES", len(decrypted_msg), success=True)
 
         # 3. Receive Encrypted (Tampered)
         msg3 = receive_message(conn)
         print("\n[Server] Received Message 3 (ECIES Encrypted, Tampered in transit):")
+        logger.log_tamper("ECIES ciphertext authentication failed")
         ecies_bundle3 = msg3['payload']['eciesBundle']
         
         try:
@@ -234,6 +239,7 @@ def network_server_thread(server_ecdsa_priv):
         except Exception as e:
             # ECIES will throw an exception (like InvalidTag or ValueError) depending on the backend used
             print(f"         -> SUCCESS (Expected Error): Decryption failed! Cryptography exception caught: {e}")
+            logger.log_tamper("ECIES ciphertext authentication failed")
 
     except Exception as e:
         print(f"[Server] Error: {e}")
@@ -250,7 +256,8 @@ def simulate_network_communication():
     # Shared session key for the simulation
     client_eddsa_priv, _ = generate_eddsa_keypair() # For signing
     server_ecdsa_priv, server_ecdsa_pub = generate_ecdsa_keypair() # For ECIES receiving
-    
+    logger.log_key_gen("ECDSA-P256")
+    logger.log_key_gen("Ed25519")
     session_symmetric_algo = ALGO_AES_GCM # Simulating handshake result
     
     # Start server in background

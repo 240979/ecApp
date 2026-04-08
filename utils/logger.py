@@ -260,3 +260,6 @@ def load_log_key(key_file: str, password: str) -> bytes:
         return aesgcm.decrypt(nonce, ct, None)
     except Exception:
         raise ValueError("Failed to decrypt log key — wrong password or file tampered.")
+
+# Default global logger
+default_logger = SecurityLogger("logs/security.log", encrypt=False)

@@ -30,6 +30,7 @@ import getpass
 from config import CA_KEYS_DIR, USER_KEYS_DIR, CA_PASSWORD_HASH_FILE
 from crypto.keys import load_private_key, public_key_from_b64, derive_key_from_password, verify_password, hash_password
 from crypto.certificates import create_certificate, save_certificate
+from utils.logger import default_logger as logger
 
 # Encrypted registry
 
@@ -166,7 +167,7 @@ def sign_csr(csr_path: str, ca_password: str, auto_confirm: bool = False) -> tup
 
     eddsa_cert = create_certificate(username, eddsa_pub, "Ed25519", ca_priv)
     print(f"EdDSA certificate issued")
-
+    logger.log_cert_create(username)
     # Save certificates
     user_dir        = os.path.join(USER_KEYS_DIR, username)
     ecdsa_cert_path = os.path.join(user_dir, "ecdsa_cert.json")

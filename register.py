@@ -30,6 +30,7 @@ from crypto.keys import (
     public_key_to_b64,
     hash_password,
 )
+from utils.logger import default_logger as logger
 
 
 def register():
@@ -77,6 +78,8 @@ def register():
 
     eddsa_priv, eddsa_pub = generate_eddsa_keypair()
     print("  EdDSA Ed25519 keypair generated")
+    logger.log_key_gen("ECDSA-P256")
+    logger.log_key_gen("Ed25519")
 
     # 4: Save private keys encrypted
     os.makedirs(user_dir, exist_ok=True)
