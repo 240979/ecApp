@@ -105,12 +105,15 @@ def handle_ca_admin():
                 print(f"An error occurred while listing users: {e}")
         if choice == '4':
             entries = logger.read_logs()
-            print(f"\n{'TIMESTAMP':<28} | {'EVENT':<15} | {'RESULT':<5}")
-            print("-" * 60)
+            print(f"\n{'TIMESTAMP':<28} | {'EVENT':<15} | {'RESULT':<5} | {'DETAILS'}")
+            print("-" * 90)
             for entry in entries:
-                print(f"{entry.get('timestamp', 'N/A')[:19]:<28} | "
-                      f"{entry.get('event', 'N/A'):<15} | "
-                      f"{entry.get('result', 'OK'):<5}")
+                # Get the values, providing defaults if they are missing
+                ts = entry.get("timestamp", "N/A")[:19]  # Truncate to YYYY-MM-DDTHH:MM:SS
+                ev = entry.get("event", "N/A")
+                rs = entry.get("result", "OK")
+                dt = entry.get("details", "")  # If no details, just leave empty
+                print(f"{ts:<28} | {ev:<15} | {rs:<5} | {dt}")
         elif choice == '5':
             break
         else:
