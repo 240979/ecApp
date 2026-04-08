@@ -24,6 +24,7 @@ import json
 import base64
 import logging
 from datetime import datetime, timezone
+import config
 
 # Events
 
@@ -137,14 +138,17 @@ class SecurityLogger:
         detail = f" — {details}" if details else ""
         self._console.info(f"{status} {event}{algo}{size}{detail}")
 
-    def read_logs(self) -> list:
+    def enable_secure_logging(self, key: bytes):
         """
-        Read and return all log entries as a list of dicts.
-        Decrypts entries if encryption is enabled.
+        Provides the master key to the logger, enabling
+        AES-GCM encryption for all future entries.
+        """
+        self.key = key
+        self.encrypt = True
+        self._console.info("Secure logging mode: ENABLED")
 
-        Returns:
-            List of log entry dicts.
-        """
+    def read_logs(self) -> list:
+        """Reads logs, automatically decrypting lines if the key is available."""
         if not os.path.exists(self.log_file):
             return []
 
@@ -152,11 +156,25 @@ class SecurityLogger:
         with open(self.log_file, "r", encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
-                if not line:
+                if not line: continue
+                try:
+                    data = json.loads(line)
+                    # Detect if this specific line is an encrypted blob
+                    if "enc" in data and "nonce" in data:
+                        if not self.key:
+                            # Log is encrypted but we haven't unlocked yet
+                            entries.append({
+                                "timestamp": "LOCKED", "event": "SECURE_ENTRY",
+                                "result": "???", "details": "Unlock as Admin to view"
+                            })
+                        else:
+                            decrypted_line = self._decrypt_line(line)
+                            entries.append(json.loads(decrypted_line))
+                    else:
+                        # Standard plaintext JSON line
+                        entries.append(data)
+                except Exception:
                     continue
-                if self.encrypt and self.key:
-                    line = self._decrypt_line(line)
-                entries.append(json.loads(line))
         return entries
 
 

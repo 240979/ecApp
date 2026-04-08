@@ -1,7 +1,9 @@
 import getpass
-import json  # Added for loading password hash
+import json
 import os
 import sys
+import config
+from utils.logger import default_logger as logger, generate_log_key, load_log_key
 
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -49,12 +51,28 @@ def handle_ca_admin():
         return
     print("CA admin authenticated.")
 
+    if config.LOG_ENCRYPT:
+        try:
+            if not os.path.exists(config.LOG_KEY_FILE):
+                # First time: Generate the log key and wrap it with the CA password
+                key = generate_log_key(config.LOG_KEY_FILE, ca_password)
+                logger.enable_secure_logging(key)
+                logger.log("LOG_SETUP", "OK", details="New log key generated and encrypted")
+            else:
+                # Subsequent times: Unwrap the log key
+                key = load_log_key(config.LOG_KEY_FILE, ca_password)
+                logger.enable_secure_logging(key)
+                print("Secure logs unlocked.")
+        except Exception as e:
+            print(f"Warning: Admin authenticated, but secure logs failed to initialize: {e}")
+
     while True:
         print("\nCA Admin Menu:")
         print("1. Sign a user's CSR")
         print("2. Revoke a user")
         print("3. List registered users")
-        print("4. Back to Main Menu")
+        print("4. View Security Logs (Audit Trail)")
+        print("5. Back to Main Menu")
         choice = input("Enter your choice: ").strip()
 
         if choice == '1':
@@ -85,7 +103,15 @@ def handle_ca_admin():
                 pass
             except Exception as e:
                 print(f"An error occurred while listing users: {e}")
-        elif choice == '4':
+        if choice == '4':
+            entries = logger.read_logs()
+            print(f"\n{'TIMESTAMP':<28} | {'EVENT':<15} | {'RESULT':<5}")
+            print("-" * 60)
+            for entry in entries:
+                print(f"{entry.get('timestamp', 'N/A')[:19]:<28} | "
+                      f"{entry.get('event', 'N/A'):<15} | "
+                      f"{entry.get('result', 'OK'):<5}")
+        elif choice == '5':
             break
         else:
             print("Invalid choice. Please try again.")
