@@ -17,8 +17,10 @@ Open your terminal in the root directory of the project (`ecApp`) and run the fo
 ```bash
     python -m venv venv
 ```
-To automatically enrypt logs, you need to add ```.env ``` file into ```.venv ```.
-In the ```.env ``` put ```LOG_SEC_KEY=<your log key> ```. It is not secure, but otherwise you need to log in as admin to enable logging. 
+To automatically encrypt logs, you need to add ```.env ``` file into root of the project. If not set, default one will be created.
+In the ```.env ``` put ```LOG_SEC_KEY=<your log key> ```. It is not secure, but otherwise you will need to put in the log password every time the app launches. 
+This password is used only for logs, so not much can happen, if it is compromised. 
+If you run the app with default log password and then change it, you need to delete all contents of ```/logs ```.
 
 ### 2. Activate the Virtual Environment
 You must activate the environment before running the app or installing packages.
