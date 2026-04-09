@@ -4,6 +4,7 @@ import os
 import sys
 import config
 from utils.logger import default_logger as logger, generate_log_key, load_log_key
+from dotenv import load_dotenv
 
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -51,20 +52,7 @@ def handle_ca_admin():
         return
     print("CA admin authenticated.")
 
-    if config.LOG_ENCRYPT:
-        try:
-            if not os.path.exists(config.LOG_KEY_FILE):
-                # First time: Generate the log key and wrap it with the CA password
-                key = generate_log_key(config.LOG_KEY_FILE, ca_password)
-                logger.enable_secure_logging(key)
-                logger.log("LOG_SETUP", "OK", details="New log key generated and encrypted")
-            else:
-                # Subsequent times: Unwrap the log key
-                key = load_log_key(config.LOG_KEY_FILE, ca_password)
-                logger.enable_secure_logging(key)
-                print("Secure logs unlocked.")
-        except Exception as e:
-            print(f"Warning: Admin authenticated, but secure logs failed to initialize: {e}")
+
 
     while True:
         print("\nCA Admin Menu:")
@@ -249,6 +237,51 @@ def handle_login_and_chat(debug_mode):
         else:
             print("Invalid choice.")
 
+def auto_unlock_logs():
+    """Checks for the environment variable and unlocks logs if found."""
+    # Get password from environment variable
+    log_pass = os.getenv("LOG_SEC_KEY")
+
+    # If no password is environmentally set, return
+    if not log_pass:
+        print("Notice: LOG_SEC_KEY not found in environment. Logs will be plaintext.")
+        return
+
+    # Handle the Key File
+    if os.path.exists(config.LOG_KEY_FILE):
+        try:
+            # Decrypt log.key with environmentally set password
+            key = load_log_key(config.LOG_KEY_FILE, log_pass)
+            logger.enable_secure_logging(key)
+            print("Successfully auto-unlocked logs.")
+        except Exception as e:
+            # Password does not match
+            print(f"Auto-unlock failed (Check your .env password): {e}")
+    else:
+        # File does not exist, create it
+        try:
+            from utils.logger import generate_log_key
+            print("First run detected: Generating new encrypted log master key...")
+            key = generate_log_key(config.LOG_KEY_FILE, log_pass)
+            logger.enable_secure_logging(key)
+        except Exception as e:
+            print(f"Failed to initialize log key: {e}")
+
+def bootstrap_env():
+    """
+        Creates a default .env file if it doesn't exist.
+        In this file, default log key is stored
+    """
+    # Use the absolute path logic we discussed
+    dotenv_path = os.path.join(os.path.dirname(__file__), '.env')
+
+    if not os.path.exists(dotenv_path):
+        print("No .env found. Creating a default configuration...")
+        with open(dotenv_path, "w") as f:
+            f.write('# Log Security Password\n')
+            f.write('LOG_SEC_KEY="default_log_key"\n')
+        print(f"Created {dotenv_path} with default credentials.")
+
 def main():
     """Main entry point for the ecApp."""
     import argparse
@@ -257,6 +290,9 @@ def main():
     parser.add_argument("--debug-local", action="store_true")
     parser.add_argument("--debug-remote", action="store_true")
     args = parser.parse_args()
+    bootstrap_env()
+    load_dotenv()
+    auto_unlock_logs()
 
     debug_mode = "local" if args.debug_local else "remote" if args.debug_remote else None
     while True:

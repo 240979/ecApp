@@ -17,6 +17,8 @@ Open your terminal in the root directory of the project (`ecApp`) and run the fo
 ```bash
     python -m venv venv
 ```
+To automatically enrypt logs, you need to add ```.env ``` file into ```.venv ```.
+In the ```.env ``` put ```LOG_SEC_KEY=<your log key> ```. It is not secure, but otherwise you need to log in as admin to enable logging. 
 
 ### 2. Activate the Virtual Environment
 You must activate the environment before running the app or installing packages.
