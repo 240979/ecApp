@@ -91,7 +91,7 @@ def handle_ca_admin():
                 pass
             except Exception as e:
                 print(f"An error occurred while listing users: {e}")
-        if choice == '4':
+        elif choice == '4':
             entries = logger.read_logs()
             print(f"\n{'TIMESTAMP':<28} | {'EVENT':<15} | {'RESULT':<5} | {'DETAILS'}")
             print("-" * 90)
