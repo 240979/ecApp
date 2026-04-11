@@ -60,7 +60,7 @@ def handle_ca_admin():
         print("2. Revoke a user")
         print("3. List registered users")
         print("4. View Security Logs (Audit Trail)")
-        print("5. Back to Main Menu")
+        print("0. Back to Main Menu")
         choice = input("Enter your choice: ").strip()
 
         if choice == '1':
@@ -102,7 +102,7 @@ def handle_ca_admin():
                 rs = entry.get("result", "OK")
                 dt = entry.get("details", "")  # If no details, just leave empty
                 print(f"{ts:<28} | {ev:<15} | {rs:<5} | {dt}")
-        elif choice == '5':
+        elif choice == '0':
             break
         else:
             print("Invalid choice. Please try again.")
@@ -177,7 +177,7 @@ def handle_login_and_chat(debug_mode):
         print(f"Current Setup: Encryption={'ON' if be_encrypted else 'OFF'}, Algo={preferred_symmetric_algo}")
         print("1. Start new chat session")
         print("2. Setup (Encryption & Algorithms)")
-        print("3. Logout and return to main menu")
+        print("0. Logout and return to main menu")
 
         chat_choice = input("Select an option: ").strip()
 
@@ -231,7 +231,7 @@ def handle_login_and_chat(debug_mode):
 
             print("Setup updated successfully.")
 
-        elif chat_choice == '3':
+        elif chat_choice == '0':
             print("Logging out...")
             continue_logged = False
         else:
@@ -300,7 +300,7 @@ def main():
         print("1. Register a new user")
         print("2. Login and start chat")
         print("3. CA Administration")
-        print("4. Exit")
+        print("0. Exit")
         choice = input("Enter your choice: ").strip()
 
         if choice == '1':
@@ -309,7 +309,7 @@ def main():
             handle_login_and_chat(debug_mode)
         elif choice == '3':
             handle_ca_admin()
-        elif choice == '4':
+        elif choice == '0':
             print("Exiting ecApp. Goodbye!")
             break
         else:
