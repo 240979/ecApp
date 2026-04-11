@@ -20,6 +20,7 @@ from utils.logger import default_logger as logger
 peer_ecdsa_pub_key = None
 peer_eddsa_pub_key = None
 session_symmetric_algo = None
+peer_username = "Partner"
 
 # User's own crypto objects (passed from main_app.py)
 user_ecdsa_priv_key = None
@@ -32,6 +33,7 @@ chat_active_event = threading.Event()
 
 def receive_thread(sock: socket.socket, is_encrypted: bool = False):
     """Thread that constantly listens on the socket."""
+    global peer_username
     while chat_active_event.is_set(): # Loop as long as chat is active
         try:
             msg: dict = receive_message(sock) # This can block
@@ -50,11 +52,11 @@ def receive_thread(sock: socket.socket, is_encrypted: bool = False):
 
                 if peer_eddsa_pub_key and signing_algo == "EdDSA": # Assuming EdDSA for SIGN_ONLY
                     if eddsa_verify(peer_eddsa_pub_key, plaintext.encode('utf-8'), signature_from_b64(signature_b64)):
-                        print(f"\n[Partner - PLAIN, VERIFIED]: {plaintext}")
+                        print(f"\n[{peer_username} - PLAIN, VERIFIED]: {plaintext}")
                     else:
-                        print(f"\n[Partner - PLAIN, FAILED VERIFICATION]: {plaintext}")
+                        print(f"\n[{peer_username} - PLAIN, FAILED VERIFICATION]: {plaintext}")
                 else:
-                    print(f"\n[Partner - PLAIN]: {plaintext}")
+                    print(f"\n[{peer_username} - PLAIN]: {plaintext}")
             
             elif m_type == MSG_MESSAGE:
                 if is_encrypted:
@@ -71,16 +73,16 @@ def receive_thread(sock: socket.socket, is_encrypted: bool = False):
                             
                             # Decrypt the message
                             decrypted_bytes = ecies_decrypt(user_ecdsa_priv_key, ecies_bundle)
-                            print(f"\n[Partner - ENCRYPTED, VERIFIED]: {decrypted_bytes.decode('utf-8')}")
+                            print(f"\n[{peer_username} - ENCRYPTED, VERIFIED]: {decrypted_bytes.decode('utf-8')}")
                             logger.log_verify("EdDSA", len(decrypted_bytes), success=True)
                             logger.log_decrypt(session_symmetric_algo, len(decrypted_bytes), success=True)
                         else:
-                            print(f"\n[Partner - ENCRYPTED, FAILED VERIFICATION]: (Could not verify signature or no peer key) {ecies_bundle}")
+                            print(f"\n[{peer_username} - ENCRYPTED, FAILED VERIFICATION]: (Could not verify signature or no peer key) {ecies_bundle}")
                             logger.log_verify("EdDSA", len(ecies_bundle), success=False)
                             logger.log_auth_fail("Signature verification failed on incoming message")
 
                     except Exception as decrypt_e:
-                        print(f"\n[Partner - ENCRYPTED, DECRYPTION FAILED]: {decrypt_e}")
+                        print(f"\n[{peer_username} - ENCRYPTED, DECRYPTION FAILED]: {decrypt_e}")
                         logger.log_tamper("ECIES ciphertext authentication failed")
                 else:
                     print("\n[Warning] Encrypted message received in unencrypted mode!")
@@ -169,7 +171,7 @@ def run_chat(sock: socket.socket, is_encrypted: bool = False):
 
                 msg = make_sign_only_message(text, signature_b64, "EdDSA") # Assuming EdDSA for signing
                 send_message(sock, msg)
-                print(f"[Me - PLAIN]: {text}")
+                # print(f"[Me - PLAIN]: {text}")
         chat_active_event.clear() # Ensure event is cleared even if an error occurs
         rx.join(timeout=1) # Give receive thread a moment to clean up
         print("[System] Chat session ended.")
@@ -202,7 +204,7 @@ def start_chat_app(
     Starts the chat application with pre-loaded user credentials over a P2P connection.
     """
     global user_ecdsa_priv_key, user_eddsa_priv_key, user_ecdsa_cert, user_eddsa_cert
-    global peer_ecdsa_pub_key, peer_eddsa_pub_key, session_symmetric_algo
+    global peer_ecdsa_pub_key, peer_eddsa_pub_key, session_symmetric_algo, peer_username
 
     user_ecdsa_priv_key = user_ecdsa_priv
     user_eddsa_priv_key = user_eddsa_priv
@@ -231,6 +233,7 @@ def start_chat_app(
             peer_eddsa_hello_cert = hello['payload']['eddsaCertificate']
             peer_supported_algs = hello['payload']['supportedAlgorithms']
             peer_name = peer_ecdsa_hello_cert['subject']
+            peer_username = peer_name
 
             if not verify_certificate(peer_ecdsa_hello_cert, ca_public_key):
                 print("[Handshake Error] Peer ECDSA certificate verification failed. Disconnecting.")
@@ -294,6 +297,7 @@ def start_chat_app(
             peer_eddsa_ack_cert = ack['payload']['eddsaCertificate']
             chosen_algorithm = ack['payload']['chosenAlgorithm']
             peer_name = peer_ecdsa_ack_cert['subject']
+            peer_username = peer_name
 
             if not verify_certificate(peer_ecdsa_ack_cert, ca_public_key):
                 print("[Handshake Error] Peer ECDSA certificate verification failed. Disconnecting.")
