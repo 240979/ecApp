@@ -275,7 +275,6 @@ def start_chat_app(
         # We act as the handshake Initiator (send HELLO, wait for ACK).
         else:
             print("Acting as Handshake Initiator...")
-            client_supported_algs = SUPPORTED_ALGORITHMS if be_encrypted else ["NONE"]
             
             # Initiator's supported algorithms, with preferred_symmetric_algo first if encryption is enabled
             client_supported_algs = []
