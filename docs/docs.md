@@ -346,8 +346,6 @@ SUCCESS: ECIES decryption failed as expected! Caught exception: InvalidTag
 
 <img src="img/sym_algo.png" width=100%>
 
-
-
 ### Logování a audit
 
 Modul `utils/logger.py` zaznamenává všechny důležité kryptografické operace a bezpečnostní události (jako je generování klíčů, ověřování certifikátů, šifrování, dešifrování, selhání autentizace a detekce manipulace). Logy mohou být volitelně šifrovány pomocí AES-256-GCM, což zajišťuje jejich důvěrnost i v případě kompromitace systému. To umožňuje auditování a forenzní analýzu.
