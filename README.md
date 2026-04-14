@@ -68,6 +68,12 @@ To launch the interactive testing interface, run the following command within yo
 ``` bash
     python -m tester.tester
 ```
+Or to enable **graphical visualization** of results run:
+
+``` bash
+    python -m tester.tester --plot
+```
+
 
 ### 6. Exit the Virtual Environment
 ``` bash

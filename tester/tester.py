@@ -1,9 +1,11 @@
 import base64
 import json
 import socket
+import argparse
 import threading
 import time
-from utils.logger import default_logger as logger
+import matplotlib.pyplot as plt
+import numpy as np
 
 # Imports from team project
 #
@@ -39,6 +41,11 @@ def benchmark_algorithms():
     
     message = b"Test message for performance measurement and signature length."
     iterations = 500 # Number of repetitions for more accurate average time
+
+    # Store results for plotting
+    results = {
+        "ECDSA": {}, "EdDSA": {}, "ECIES": {"encryption_times": {}, "decryption_times": {}, "bundle_sizes": {}}
+    }
     
     # --- 1. ECDSA Benchmark ---
     print("\n--- ECDSA (Curve SECP256R1) ---")
@@ -70,6 +77,13 @@ def benchmark_algorithms():
     print(f"Avg Signing Time:     {ecdsa_sign_time * 1000:.3f} ms")
     print(f"Avg Verification Time: {ecdsa_verify_time * 1000:.3f} ms")
 
+    results["ECDSA"]["keygen_time"] = ecdsa_keygen_time * 1000
+    results["ECDSA"]["sign_time"] = ecdsa_sign_time * 1000
+    results["ECDSA"]["verify_time"] = ecdsa_verify_time * 1000
+    results["ECDSA"]["pub_key_size"] = ecdsa_pub_size
+    results["ECDSA"]["sig_size"] = len(ecdsa_sig)
+
+
 
     # --- 2. EdDSA Benchmark ---
     print("\n--- EdDSA (Curve Ed25519) ---")
@@ -100,6 +114,12 @@ def benchmark_algorithms():
     print(f"Avg Keygen Time:      {eddsa_keygen_time * 1000:.3f} ms")
     print(f"Avg Signing Time:     {eddsa_sign_time * 1000:.3f} ms")
     print(f"Avg Verification Time: {eddsa_verify_time * 1000:.3f} ms")
+    
+    results["EdDSA"]["keygen_time"] = eddsa_keygen_time * 1000
+    results["EdDSA"]["sign_time"] = eddsa_sign_time * 1000
+    results["EdDSA"]["verify_time"] = eddsa_verify_time * 1000
+    results["EdDSA"]["pub_key_size"] = eddsa_pub_size
+    results["EdDSA"]["sig_size"] = len(eddsa_sig)
 
 # --- 3. ECIES Benchmark ---
     print("\n--- ECIES (Hybrid Encryption via SECP256R1) ---")
@@ -126,6 +146,74 @@ def benchmark_algorithms():
         print(f"  Total Bundle Size:     {bundle_size} bytes (JSON serialized)")
         print(f"  Avg Encryption Time:   {enc_time * 1000:.3f} ms")
         print(f"  Avg Decryption Time:   {dec_time * 1000:.3f} ms")
+
+        results["ECIES"]["encryption_times"][algo] = enc_time * 1000
+        results["ECIES"]["decryption_times"][algo] = dec_time * 1000
+        results["ECIES"]["bundle_sizes"][algo] = bundle_size
+
+    return results
+
+def plot_benchmark_results(results):
+    print("\n" + "="*60)
+    print(" GENERATING VISUALIZATIONS")
+    print("="*60)
+
+    # --- ECDSA vs EdDSA Comparison Plots ---
+    labels = ['ECDSA', 'EdDSA']
+    x = np.arange(len(labels))
+    width = 0.35
+
+    # Key Generation Time
+    fig1, ax1 = plt.subplots(figsize=(8, 5))
+    keygen_times = [results['ECDSA']['keygen_time'], results['EdDSA']['keygen_time']]
+    ax1.bar(x, keygen_times, width, label='Keygen Time')
+    ax1.set_ylabel('Time (ms)')
+    ax1.set_title('Average Key Generation Time')
+    ax1.set_xticks(x)
+    ax1.set_xticklabels(labels)
+    ax1.legend()
+    fig1.tight_layout()
+
+    # Public Key Size
+    fig2, ax2 = plt.subplots(figsize=(8, 5))
+    pub_key_sizes = [results['ECDSA']['pub_key_size'], results['EdDSA']['pub_key_size']]
+    ax2.bar(x, pub_key_sizes, width, label='Public Key Size')
+    ax2.set_ylabel('Size (bytes)')
+    ax2.set_title('Public Key Size Comparison')
+    ax2.set_xticks(x)
+    ax2.set_xticklabels(labels)
+    ax2.legend()
+    fig2.tight_layout()
+
+    # Signature Size
+    fig3, ax3 = plt.subplots(figsize=(8, 5))
+    sig_sizes = [results['ECDSA']['sig_size'], results['EdDSA']['sig_size']]
+    ax3.bar(x, sig_sizes, width, label='Signature Size')
+    ax3.set_ylabel('Size (bytes)')
+    ax3.set_title('Signature Size Comparison')
+    ax3.set_xticks(x)
+    ax3.set_xticklabels(labels)
+    ax3.legend()
+    fig3.tight_layout()
+
+    # --- ECIES Performance Plots ---
+    ecies_algos = list(results['ECIES']['encryption_times'].keys())
+    x_ecies = np.arange(len(ecies_algos))
+
+    # ECIES Encryption/Decryption Times
+    fig4, ax4 = plt.subplots(figsize=(10, 6))
+    enc_times = [results['ECIES']['encryption_times'][algo] for algo in ecies_algos]
+    dec_times = [results['ECIES']['decryption_times'][algo] for algo in ecies_algos]
+    ax4.bar(x_ecies - width/2, enc_times, width, label='Encryption Time')
+    ax4.bar(x_ecies + width/2, dec_times, width, label='Decryption Time')
+    ax4.set_ylabel('Time (ms)')
+    ax4.set_title('ECIES Encryption and Decryption Times by Symmetric Algorithm')
+    ax4.set_xticks(x_ecies)
+    ax4.set_xticklabels(ecies_algos)
+    ax4.legend()
+    fig4.tight_layout()
+
+    plt.show()
 
 def demonstrate_failures():
     print("\n" + "="*60)
@@ -322,6 +410,10 @@ def simulate_network_communication():
 
 
 def main():
+    parser = argparse.ArgumentParser(description="ecApp Cryptographic Tester Tool")
+    parser.add_argument("--plot", action="store_true", help="Generate and display plots for benchmarks.")
+    args = parser.parse_args()
+
     while True:
         print("\n=== CRYPTO ALGORITHM TEST TOOL ===")
         print("1. Algorithm Benchmarks (Speed, Size, Performance)")
@@ -329,10 +421,12 @@ def main():
         print("3. Simulate Network Communication (Wireshark Capture Test via Loopback)")
         print("4. Exit")
         
-        choice = input("Select action (1-3): ")
+        choice = input("Select action (1-4): ")
         
         if choice == '1':
-            benchmark_algorithms()
+            benchmark_results = benchmark_algorithms()
+            if args.plot:
+                plot_benchmark_results(benchmark_results)
         elif choice == '2':
             demonstrate_failures()
         elif choice == '3':
