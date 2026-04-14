@@ -147,7 +147,7 @@ Bezpečnostní model `ecApp` je navržen tak, aby zajistil důvěrnost, integrit
 
 Aplikace `ecApp` je modulární a skládá se z několika hlavních komponent, které spolupracují na zajištění bezpečné komunikace. Následující diagram znázorňuje základní strukturu a interakce mezi hlavními moduly:
 
-**TODO -- přidat schema**
+<img src="img/design_schema.png" width=100%>
 
 ### Popis hlavních komponent:
 *   **`main_app.py`:** Vstupní bod aplikace. Zpracovává argumenty příkazové řádky, načítá uživatelské klíče a certifikáty, a inicializuje chatovací aplikaci.
@@ -217,7 +217,7 @@ Každý modul s kritickou funkcionalitou (např. `register.py`, `ca_sign.py`, `s
 4.  **Testuje chybové stavy:** Pokouší se vyvolat očekávané chyby (např. dešifrování s nesprávným klíčem, ověření padělaného podpisu).
 5.  **Vyčistí prostředí:** Odstraní dočasné soubory.
 
-### Pokryté Oblasti Testů
+### Pokryté oblasti testů
 
 *   **`register.py`:** Generování a ukládání klíčů, hashování hesla, tvorba CSR.
 *   **`ca_sign.py`:** Načítání klíčů CA, správa registru uživatelů, podepisování CSR, ověřování certifikátů.
@@ -244,10 +244,109 @@ Spuštění interaktivního testovacího rozhraní:
 ```bash
 python -m tester.tester
 ```
+Nebo pro spuštění s **grafickým zobrazením výsledků**:
+```bash
+python -m tester.tester --plot
+```
 
 Tyto testy poskytují hlubší pohled na chování aplikace v různých scénářích a ověřují její odolnost proti běžným útokům a správnou funkčnost kryptografických operací.
 
-**TODO -- přidat vysledky**
+#### Demonstrace selhání bezpečnosti
+
+```diff
+! --- 1. ECDSA Signatures (SECP256R1) ---
+[Test 1.1] Altering one byte in ECDSA signature (Data-in-transit modification)
+SUCCESS: ecdsa_verify returned False. Tampered ECDSA signature was rejected.
+- [INFO] ✗ TAMPER — ECDSA signature byte flipped
+[Test 1.2] Verifying valid ECDSA signature with a different public key (Identity spoofing)
+SUCCESS: ecdsa_verify returned False. Eva's key cannot verify Alice's ECDSA signature.
+- [INFO] ✗ AUTH_FAIL — Wrong public key used for ECDSA verify
+
+! --- 2. EdDSA Signatures (Ed25519) ---
+[Test 2.1] Altering one byte in EdDSA signature (Data-in-transit modification)
+SUCCESS: eddsa_verify returned False. Tampered signature was rejected.
+- [INFO] ✗ TAMPER — EdDSA signature byte flipped
+[Test 2.2] Verifying valid EdDSA signature with a different public key (Identity spoofing)
+SUCCESS: eddsa_verify returned False. Eva's key cannot verify Alice's signature.
+- [INFO] ✗ TAMPER — EdDSA signature byte flipped
+
+! --- 3. ECIES Encryption (AEAD Integrity) ---
+[Test 3.1] Modifying ECIES ciphertext in memory
+SUCCESS: ECIES decryption failed as expected! Caught exception: InvalidTag
+- [INFO] ✗ DECRYPT [AES-256-GCM] 63B
+```
+#### Simulace síťové komunikace
+```diff
+[INFO] ✓ KEY_GEN [ECDSA-P256]
+[INFO] ✓ KEY_GEN [Ed25519]
+[Server] Listening on 127.0.0.1:25519...
+[Client] Connecting to 127.0.0.1:25519...
+[Server] Connection established with ('127.0.0.1', 43216)
+
+![Client] Sending unencrypted message...
+[Server] Received Message 1 (Unencrypted):
+         Type: SIGN_ONLY
+         Plaintext: Hello Bob! This is in PLAINTEXT. You can read me in Wireshark!
+
+![Client] Sending ENCRYPTED message...
+[Server] Received Message 2 (Encrypted):
+         Type: MESSAGE
+        -> Successfully decrypted: Secret launch codes: 12345. Wireshark cannot see this!
+> [INFO] ✓ DECRYPT [ECIES] 54B
+
+![Client] Sending ENCRYPTED but TAMPERED message...
+[Server] Received Message 3 (ECIES Encrypted, Tampered in transit):
+[INFO] ✗ TAMPER — ECIES ciphertext authentication failed
+         Attempting ECIES decryption...
+         -> SUCCESS (Expected Error): Decryption failed! Cryptography exception caught: 
+- [INFO] ✗ TAMPER — ECIES ciphertext authentication failed
+
+[Server] Connection closed.
+[Client] Done.
+
+```
+
+#### Srovnání algoritmů
+<table>
+  <thead>
+    <tr>
+      <th></th>
+      <th>ECDSA<br>(Křivka SECP256R1)</th>
+      <th>EdDSA<br>(Křivka Ed25519)</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Velikost veřejného klíče [byte]</strong></td>
+      <td>91</td>
+      <td>44</td>
+    </tr>
+    <tr>
+      <td><strong>Velikost podpisu [byte]</strong></td>
+      <td>70</td>
+      <td>64</td>
+    </tr>
+    <tr>
+      <td><strong>Prům. čas generování klíče [ms]</strong></td>
+      <td>0,013</td>
+      <td>0,026</td>
+    </tr>
+    <tr>
+      <td><strong>Prům. čas podepisování [ms]</strong></td>
+      <td>0,019</td>
+      <td>0,025</td>
+    </tr>
+    <tr>
+      <td><strong>Prům. čas ověření [ms]</strong></td>
+      <td>0,049</td>
+      <td>0,080</td>
+    </tr>
+  </tbody>
+</table>
+
+<img src="img/sym_algo.png" width=100%>
+
+
 
 ### Logování a audit
 
