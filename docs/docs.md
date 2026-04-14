@@ -87,28 +87,41 @@ Aplikace je rozdělena do několika klíčových modulů, které zajišťují ge
 Pro plné spuštění aplikace je nutné provést několik kroků, které zahrnují nastavení Certifikační Autority (CA), registraci uživatele a získání certifikátů.
 
 1.  **Generování CA klíčů a hesla (jednorázově, provádí administrátor CA):**
+    > Tento krok není třeba provádět pokud již máte k dispozici existující CA.
+
     Nejprve je nutné vygenerovat klíče pro Certifikační Autoritu a nastavit heslo pro správu CA.
     ```bash
     python config.py --generate-ca
     python config.py --generate-ca-admin-password
     ```
-2.  **Registrace uživatele (každý uživatel):**
-    Každý uživatel musí projít registračním procesem, který vygeneruje jeho klíče a vytvoří žádost o certifikát (CSR).
-    ```bash
-    python register.py
-    ```
-    Po registraci odešlete vygenerovaný `csr.json` soubor administrátorovi CA.
-3.  **Podepsání CSR administrátorem CA:**
-    Administrátor CA použije svůj privátní klíč k podepsání CSR a vydání certifikátů pro uživatele.
-    ```bash
-    python ca_sign.py --csr client/keys/<username>/csr.json
-    ```
-    Administrátor CA vám vrátí podepsané certifikáty (`ecdsa_cert.json`, `eddsa_cert.json`), které umístíte do vašeho adresáře `client/keys/<username>/`.
-4.  **Spuštění hlavní aplikace:**
+    Klíč i hash hesla musí být manuálně propány do aplikace:
+    * `ca/ca_keys/password.json` hash hesla
+    * `config.py` konstanta `CA_PUBLIC_KEY_B64` pro veřejný klíč
+
+2. **Spuštění hlavní aplikace:**
     ```bash
     python main_app.py
+    ``` 
+    1. **Registrace uživatele (každý uživatel):**
+    Každý uživatel musí projít registračním procesem, který vygeneruje jeho klíče a vytvoří žádost o certifikát (CSR).
+    Po registraci předá vygenerovaný `csr.json` soubor administrátorovi CA.
+
+    2. **Podepsání CSR administrátorem CA:**
+    Administrátor CA použije svůj privátní klíč k podepsání CSR a vydání certifikátů pro uživatele.
+    Administrátor CA vám vrátí podepsané certifikáty (`ecdsa_cert.json`, `eddsa_cert.json`), které umístíte do vašeho adresáře `client/keys/<username>/`.
+ 
+    3. **Nyní lze po přihlášení uživatele navazovat spojení.**
+
+3. **Lokální debug**
+    První instance aplikace:
+    ``` bash
+    python main_app.py --debug-local
     ```
-    Aplikace vás vyzve k zadání uživatelského jména a hesla. Poté můžete zadat IP adresu peeru pro navázání spojení.
+    Druhá instance aplikace:
+    ``` bash
+    python main_app.py --debug-remote
+    ```
+    Takové spuštění zaručí odlišné porty pro obě strany v rámci jediného zařízení.
 
 ## 4. Bezpečnostní model
 
@@ -378,6 +391,14 @@ Modul `utils/logger.py` zaznamenává všechny důležité kryptografické opera
     *   Funkce pro derivaci klíčů (HKDF, PBKDF2).
     *   Hashovací funkce.
     *   Zabezpečené generování náhodných čísel (`os.urandom`).
+*   **`argon2-cffi`**: Implementace algoritmu pro hashování hesel **Argon2id**.
+    *   Bezpečné ukládání hashů uživatelských hesel (`password.json`) a pro ověřování hesel.
+    *   Parametry Argon2id jsou nastaveny podle doporučení OWASP.
+*   **`python-dotenv`**: Načítání proměnných prostředí ze souboru `.env`.
+    *   Umožňuje volitelné nastavení `LOG_SEC_KEY` pro automatické šifrování logů.
+*   **`matplotlib`**: Generování grafických vizualizací.
+    *   Využívána v `tester.py` pro vizualizaci výsledků výkonnostních benchmarků (generování klíčů, podepisování, ověřování, šifrování/dešifrování) napříč algoritmy.
+
 
 ### Zdroje
 
@@ -385,6 +406,7 @@ Modul `utils/logger.py` zaznamenává všechny důležité kryptografické opera
 *   RFC 5869: HMAC-based Extract-and-Expand Key Derivation Function (HKDF)
 *   Standardy pro eliptické křivky (např. NIST SP 800-186 pro P-256).
 *   Standardy pro EdDSA (RFC 8032).
+*   Doporučení OWASP pro parametry Argon2id.
 *   Obecné principy síťové komunikace a TCP/IP.
 *   Principy P2P sítí.
 *   Principy Certificate Authorities a PKI.
