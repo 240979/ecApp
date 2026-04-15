@@ -57,7 +57,25 @@ and the second with
 This ensures that the apps will not fight over TCP port 25519, which is default.
 You can then use "localhost" as target IP address.
 
-### 5. Benchmark and Tests
+### 5. Configure Certificate authority
+To be able to register new users, you have to have valid certificate authority administrator.
+
+``` bash
+    python config.py --generate-ca-admin-password
+```
+
+### 6. Register a user
+To get user certificates, you have to send file generated during user registration to the CA administrator (`client/keys/<username>/csr.json`).
+
+CA administrator can register new user via app interface and will send back certificates files:
+
+`client/keys/<username>/ecdsa_cert.json` - To allow others to send you secret messages securely.
+
+`client/keys/<username>/eddsa_cert.json` - To prove that a message really came from you and was not changed.
+
+Once you have your certificates, you can run the app.
+
+### 7. Benchmark and Tests
 This project includes an interactive testing suite (`tester.py`) to evaluate the performance and security of the cryptographic implementations. The tool provides three main functionalities:
 
 * **Performance Benchmarks:** Measures execution times for key generation, signing, verifying, and encrypting/decrypting across ECDSA, EdDSA, and ECIES algorithms.
@@ -75,7 +93,7 @@ Or to enable **graphical visualization** of results run:
 ```
 
 
-### 6. Exit the Virtual Environment
+### 8. Exit the Virtual Environment
 ``` bash
     deactivate
 ```
