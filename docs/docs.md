@@ -94,8 +94,8 @@ Pro plné spuštění aplikace je nutné provést několik kroků, které zahrnu
     python config.py --generate-ca
     python config.py --generate-ca-admin-password
     ```
-    Klíč i hash hesla musí být manuálně propány do aplikace:
-    * `ca/ca_keys/password.json` hash hesla
+    Klíč i hash hesla musí být manuálně vložen do aplikace:
+    * `ca/ca_keys/password.json` pro hash hesla
     * `config.py` konstanta `CA_PUBLIC_KEY_B64` pro veřejný klíč
 
 2. **Spuštění hlavní aplikace:**
@@ -113,6 +113,7 @@ Pro plné spuštění aplikace je nutné provést několik kroků, které zahrnu
     3. **Nyní lze po přihlášení uživatele navazovat spojení.**
 
 3. **Lokální debug**
+
     První instance aplikace:
     ``` bash
     python main_app.py --debug-local
@@ -132,7 +133,7 @@ Bezpečnostní model `ecApp` je navržen tak, aby zajistil důvěrnost, integrit
     *   ECIES využívá **efemérní klíče** pro každou zprávu, což zajišťuje **dopřednou bezpečnost (forward secrecy)** pro samotné zprávy. I kdyby byly dlouhodobé privátní klíče kompromitovány, staré zprávy zůstanou v bezpečí.
     *   Podporované symetrické šifrovací algoritmy v rámci ECIES jsou:
         *   **AES-256-GCM:** Režim s autentizovaným šifrováním, poskytuje důvěrnost i integritu.
-        *   **ChaCha20-Poly1305:** Streamová šifra s autentizací, poskytuje důvěrnost i integritu.
+        *   **ChaCha20-Poly1305:** Prouduvá šifra s autentizací, poskytuje důvěrnost i integritu.
         *   **AES-256-CBC+HMAC-SHA256:** Šifrování v režimu CBC s následným HMAC pro integritu (Encrypt-then-MAC).
     *   Privátní klíče uživatelů jsou uloženy šifrovaně na disku pomocí **AES-256-GCM**, chráněné heslem uživatele.
 
@@ -147,7 +148,7 @@ Bezpečnostní model `ecApp` je navržen tak, aby zajistil důvěrnost, integrit
 *   **Autenticita (Authenticity):**
     *   **Autenticita peerů:** Zajištěna pomocí **digitálních certifikátů** vydaných centrální **Certifikační Autorita (CA)**. Během handshake si peerové vyměňují své certifikáty, které jsou ověřeny proti veřejnému klíči CA. Tím je zajištěno, že komunikujete s ověřeným uživatelem.
     *   **Autenticita zpráv:** Zajištěna digitálními podpisy. Příjemce ověří podpis zprávy pomocí veřejného klíče odesílatele (získaného z jeho certifikátu).
-    *   **Autenticita uživatele:** Při spuštění aplikace se uživatel autentizuje heslem, které dešifruje jeho privátní klíče. Heslo je uloženo jako hash (argon2 algoritmus) pro ochranu před útoky hrubou silou.
+    *   **Autenticita uživatele:** Při spuštění aplikace se uživatel autentizuje heslem, které dešifruje jeho privátní klíče.
     *   **Ochrana hesla:** Pro hashování hesel je použit algoritmus **Argon2id** s parametry doporučenými OWASP: 19 MiB paměti, 2 iterace, 1 vlákno.
 *   **Nepopiratelnost (Non-repudiation):**
     *   Digitální podpisy zajišťují, že odesílatel nemůže popřít odeslání zprávy, pokud je jeho privátní klíč v bezpečí.
@@ -190,7 +191,7 @@ Aplikace `ecApp` je modulární a skládá se z několika hlavních komponent, k
 *   **Derivace Klíčů:**
     *   **HKDF-SHA256 (HMAC-based Key Derivation Function):** Používá se k bezpečnému odvození symetrických šifrovacích klíčů z ECDH sdíleného tajemství. Zajišťuje, že sdílené tajemství není přímo použito jako klíč a přidává odolnost proti útokům. Využívá sůl (`salt`) a kontextovou informaci (`info`).
         *   `derive_symmetric_key()` v `crypto/ecies.py`
-    *   **PBKDF2 (pravděpodobně):** Pro derivaci klíčů z uživatelského hesla k šifrování privátních klíčů a ověřování hesla.
+    *   **PBKDF2:** Pro derivaci klíčů z uživatelského hesla k šifrování privátních klíčů a ověřování hesla.
     *   **Argon2id:** Pro derivaci klíčů z uživatelského hesla k šifrování privátních klíčů a ověřování hesla. Používá se funkce `derive_key_from_password()` v `crypto/keys.py` (také pro dešifrování registru CA) a `hash_password()` a `verify_password()` pro uživatelská hesla. Parametry Argon2id jsou nastaveny na 19 MiB paměti, 2 iterace a 1 vlákno, což odpovídá doporučením OWASP.
 
     
@@ -200,7 +201,7 @@ Aplikace `ecApp` je modulární a skládá se z několika hlavních komponent, k
     *   **Symetrické šifrování:**
         *   **AES-256-GCM:** Autentizované šifrování s asociovanými daty (AEAD). Poskytuje důvěrnost, integritu a autenticitu. Používá 12-bajtový nonce.
             *   `_encrypt_aes_gcm()`, `_decrypt_aes_gcm()` v `crypto/ecies.py`
-        *   **ChaCha20-Poly1305:** Streamová šifra s autentizací (AEAD). Poskytuje důvěrnost, integritu a autenticitu. Používá 12-bajtový nonce.
+        *   **ChaCha20-Poly1305:** Proudová šifra s autentizací (AEAD). Poskytuje důvěrnost, integritu a autenticitu. Používá 12-bajtový nonce.
             *   `_encrypt_chacha20()`, `_decrypt_chacha20()` v `crypto/ecies.py`
         *   **AES-256-CBC + HMAC-SHA256:** Šifrování v režimu Cipher Block Chaining (CBC) pro důvěrnost, kombinované s HMAC-SHA256 pro integritu a autenticitu (Encrypt-then-MAC). Klíč je rozdělen na šifrovací a MAC klíč. Používá 16-bajtový IV.
             *   `_encrypt_aes_cbc_hmac()`, `_decrypt_aes_cbc_hmac()` v `crypto/ecies.py`
@@ -215,6 +216,17 @@ Aplikace `ecApp` je modulární a skládá se z několika hlavních komponent, k
     *   Jednoduchá JSON struktura obsahující uživatelské jméno, veřejný klíč a podpis CA.
     *   **Ověření certifikátu:** Provádí se ověřením digitálního podpisu CA na certifikátu pomocí veřejného klíče CA.
         *   `create_certificate()`, `verify_certificate()` v `crypto/certificates.py`
+
+    * Struktura certifikátu (JSON):
+```json
+    {
+    "issuer":             "CA",
+    "publicKey":          "<base64 DER public key>",
+    "publicKeyAlgorithm": "Ed25519" | "ECDSA-P256",
+    "signature":          "<base64 CA signature>"
+    "subject":            "<username>"
+    }
+```
 
 ## 7. Testovací metodika a výsledky
 
@@ -247,7 +259,7 @@ Při běžném vývoji a testování byly všechny tyto testy úspěšné, což 
 
 ### Interaktivní testovací sada (`tester.py`)
 
-Kromě integrovaných `_selftest()` funkcí projekt obsahuje komplexní interaktivní testovací sadu (`tester.py`), která je popsána v `README.md`. Tato sada umožňuje:
+Kromě integrovaných `_selftest()` funkcí projekt obsahuje komplexní interaktivní testovací sadu (`tester.py`). Tato sada umožňuje:
 
 *   **Výkonnostní benchmarky:** Měří časy provádění pro generování klíčů, podepisování, ověřování a šifrování/dešifrování napříč algoritmy ECDSA, EdDSA a ECIES.
 *   **Bezpečnostní validace:** Simuluje útoky v paměti (např. bit-flipping, falšování podpisů a spoofing identity), aby se zajistilo, že kontroly integrity a AEAD backendy správně odmítají neplatná nebo pozměněná data.
@@ -391,7 +403,7 @@ Modul `utils/logger.py` zaznamenává všechny důležité kryptografické opera
     *   Funkce pro derivaci klíčů (HKDF, PBKDF2).
     *   Hashovací funkce.
     *   Zabezpečené generování náhodných čísel (`os.urandom`).
-*   **`argon2-cffi`**: Implementace algoritmu pro hashování hesel **Argon2id**.
+*   **`argon2-cffi`**: Implementace algoritmu pro hashování hesel Argon2id.
     *   Bezpečné ukládání hashů uživatelských hesel (`password.json`) a pro ověřování hesel.
     *   Parametry Argon2id jsou nastaveny podle doporučení OWASP.
 *   **`python-dotenv`**: Načítání proměnných prostředí ze souboru `.env`.
